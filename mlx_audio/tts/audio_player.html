@@ -26,7 +26,10 @@
             padding: 8px 16px;
             text-align: center;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             font-size: 14px;
             margin: 4px 2px;
             cursor: pointer;
@@ -155,24 +158,31 @@
             margin-top: 5px;
             font-size: 14px;
         }
+        .button-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
 
     <div id="controls">
         <h1>MLX-Audio Player</h1>
-        
+
         <div class="tab">
             <button class="tablinks active" onclick="openTab(event, 'textToSpeech')">Text to Speech</button>
             <button class="tablinks" onclick="openTab(event, 'fileUpload')">File Upload</button>
         </div>
-        
+
         <div id="textToSpeech" class="tabcontent" style="display: block;">
             <div class="form-group">
                 <label for="text">Text to convert:</label>
                 <textarea id="text" placeholder="Enter text here..."></textarea>
             </div>
-            
+
             <div class="form-group">
                 <label for="voice">Voice:</label>
                 <select id="voice">
@@ -182,7 +192,7 @@
                     <option value="bf_emma">BF Emma</option>
                 </select>
             </div>
-            
+
             <div class="form-group">
                 <label for="speed">Speech Speed:</label>
                 <div class="slider-container">
@@ -195,18 +205,40 @@
                     <div class="speed-value-display"><span id="speed-value">1.0</span>x</div>
                 </div>
             </div>
-            
-            <button id="generateBtn">Generate Speech</button>
-            <button id="openFolderBtn" style="background-color: #2196F3;">Open Output Folder</button>
+
+            <div class="button-row">
+                <button id="generateBtn">
+                    <i class="fas fa-wand-magic-sparkles"></i>
+                    Generate
+                </button>
+                <button id="openFolderBtn" style="background-color: #2196F3;">
+                    <i class="fas fa-folder-open"></i>
+                    Folder
+                </button>
+                <button id="ttsPlayBtn" disabled>
+                    <i class="fas fa-play"></i>
+                    Play
+                </button>
+                <button id="ttsStopBtn" disabled style="background-color: #f44336;">
+                    <i class="fas fa-stop"></i>
+                    Stop
+                </button>
+            </div>
             <div id="ttsError" class="error" style="display: none;"></div>
             <div id="ttsStatus" style="margin-top: 10px; max-width: 350px;"></div>
         </div>
-        
+
         <div id="fileUpload" class="tabcontent">
             <input type="file" id="audioUpload" accept="audio/*">
-            <div style="margin-top: 10px;">
-                <button id="playBtn" disabled>Play</button>
-                <button id="stopBtn" disabled>Stop</button>
+            <div class="button-row">
+                <button id="playBtn" disabled>
+                    <i class="fas fa-play"></i>
+                    Play
+                </button>
+                <button id="stopBtn" disabled style="background-color: #f44336;">
+                    <i class="fas fa-stop"></i>
+                    Stop
+                </button>
             </div>
             <div id="status">Upload an audio file to begin visualization</div>
         </div>
@@ -232,6 +264,8 @@
         const openFolderBtn = document.getElementById('openFolderBtn');
         const ttsErrorElement = document.getElementById('ttsError');
         const ttsStatusElement = document.getElementById('ttsStatus');
+        const ttsPlayBtn = document.getElementById('ttsPlayBtn');
+        const ttsStopBtn = document.getElementById('ttsStopBtn');
 
         // Audio variables
         let audioContext;
@@ -239,6 +273,7 @@
         let dataArray;
         let audioElement;
         let audioSource;
+        let currentTTSFile = null;
 
         // Three.js setup
         const scene = new THREE.Scene();
@@ -311,46 +346,46 @@
             for (let i = 0; i < tabcontent.length; i++) {
                 tabcontent[i].style.display = "none";
             }
-            
+
             // Remove active class from all tablinks
             const tablinks = document.getElementsByClassName("tablinks");
             for (let i = 0; i < tablinks.length; i++) {
                 tablinks[i].className = tablinks[i].className.replace(" active", "");
             }
-            
+
             // Show the current tab and add active class to the button
             document.getElementById(tabName).style.display = "block";
             evt.currentTarget.className += " active";
         }
-        
+
         // Speed slider update
         speedInput.addEventListener('input', function() {
             speedValue.textContent = this.value;
         });
-        
+
         // Generate speech button handler
         generateBtn.addEventListener('click', function() {
             const text = textInput.value;
             const voice = voiceSelect.value;
             const speed = speedInput.value;
-            
+
             if (!text.trim()) {
                 showTtsError('Please enter some text');
                 return;
             }
-            
+
             // Hide previous error
             ttsErrorElement.style.display = 'none';
             ttsStatusElement.textContent = 'Generating speech...';
-            
+
             // Create form data
             const formData = new FormData();
             formData.append('text', text);
             formData.append('voice', voice);
             formData.append('speed', speed);
-            
+
             // Send request to server
-            fetch('/tts', {
+            fetch('http://localhost:8000/tts', {
                 method: 'POST',
                 body: formData
             })
@@ -364,50 +399,50 @@
             })
             .then(data => {
                 ttsStatusElement.textContent = 'Speech generated successfully!';
-                
+                currentTTSFile = data.filename;  // Store the filename
+
                 // Clean up previous audio resources
                 if (audioElement) {
                     audioElement.pause();
                     audioElement.removeAttribute('src');
                     audioElement.load();
                 }
-                
+
                 if (audioSource) {
                     audioSource.disconnect();
                     audioSource = null;
                 }
-                
+
                 // Create new audio element to avoid source node issues
                 audioElement = new Audio();
-                
+
                 // Set audio source with absolute path
-                audioElement.src = `/audio/${data.filename}`;
+                audioElement.src = `http://localhost:8000/audio/${data.filename}`;
                 audioElement.loop = false;
-                
+
                 // Enable play button
-                playBtn.disabled = false;
-                stopBtn.disabled = true;
-                
+                ttsPlayBtn.disabled = false;
+                ttsStopBtn.disabled = true;
+
                 // Add ended event listener
                 audioElement.addEventListener('ended', function() {
-                    statusElement.textContent = "Audio finished playing.";
-                    playBtn.disabled = false;
-                    stopBtn.disabled = true;
+                    ttsStatusElement.textContent = "Audio finished playing.";
+                    ttsPlayBtn.disabled = false;
+                    ttsStopBtn.disabled = true;
                     resetSphere();
                 });
-                
-                // Auto-play the generated audio
-                playAudio();
+
+                // Auto-play is now optional - user can click play button instead
             })
             .catch(error => {
                 showTtsError(error.message);
                 ttsStatusElement.textContent = '';
             });
         });
-        
+
         // Open output folder button handler
         openFolderBtn.addEventListener('click', function() {
-            fetch('/open_output_folder', {
+            fetch('http://localhost:8000/open_output_folder', {
                 method: 'POST'
             })
             .then(response => {
@@ -425,33 +460,38 @@
                 showTtsError(error.message);
             });
         });
-        
+
         function showTtsError(message) {
             ttsErrorElement.textContent = message;
             ttsErrorElement.style.display = 'block';
         }
-        
+
         // Function to play audio (reused for both upload and TTS)
         function playAudio() {
             if (!audioElement || !audioElement.src) {
                 statusElement.textContent = "No audio available to play.";
                 return;
             }
-            
-            statusElement.textContent = "Playing audio...";
-            
+
+            const isFileUploadTab = document.getElementById('fileUpload').style.display !== 'none';
+            const statusEl = isFileUploadTab ? statusElement : ttsStatusElement;
+            const playEl = isFileUploadTab ? playBtn : ttsPlayBtn;
+            const stopEl = isFileUploadTab ? stopBtn : ttsStopBtn;
+
+            statusEl.textContent = "Playing audio...";
+
             // Initialize audio context if needed
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
-            
+
             // Create analyser if needed
             if (!analyser) {
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
             }
-            
+
             // Connect audio element to analyser if not already connected
             if (!audioSource) {
                 try {
@@ -460,22 +500,22 @@
                     analyser.connect(audioContext.destination);
                 } catch (error) {
                     console.error("Error connecting audio source:", error);
-                    statusElement.textContent = "Error setting up audio visualization. Try refreshing the page.";
-                    
+                    statusEl.textContent = "Error setting up audio visualization. Try refreshing the page.";
+
                     // Still try to play the audio even if visualization fails
                     audioElement.play().catch(playError => {
-                        statusElement.textContent = "Error playing audio: " + playError.message;
+                        statusEl.textContent = "Error playing audio: " + playError.message;
                     });
                     return;
                 }
             }
-            
+
             // Play audio
             audioElement.play().then(() => {
-                playBtn.disabled = true;
-                stopBtn.disabled = false;
+                playEl.disabled = true;
+                stopEl.disabled = false;
             }).catch(error => {
-                statusElement.textContent = "Error playing audio: " + error.message;
+                statusEl.textContent = "Error playing audio: " + error.message;
             });
         }
 
@@ -492,12 +532,12 @@
                 audioElement.removeAttribute('src');
                 audioElement.load();
             }
-            
+
             if (audioSource) {
                 audioSource.disconnect();
                 audioSource = null;
             }
-            
+
             // Create new audio element
             audioElement = new Audio();
             audioElement.src = URL.createObjectURL(file);
@@ -516,23 +556,52 @@
             });
         });
 
-        // Play button handler
-        playBtn.addEventListener('click', function() {
-            playAudio();
-        });
-
-        // Stop button handler
-        stopBtn.addEventListener('click', function() {
+        // Common audio stop function
+        function stopAudioPlayback(statusEl, playEl, stopEl) {
             if (audioElement) {
                 audioElement.pause();
                 audioElement.currentTime = 0;
-                statusElement.textContent = "Audio stopped. Press Play to restart.";
-                playBtn.disabled = false;
-                stopBtn.disabled = true;
-
-                // Reset sphere to original state
+                statusEl.textContent = "Audio stopped. Press Play to restart.";
+                playEl.disabled = false;
+                stopEl.disabled = true;
                 resetSphere();
             }
+        }
+
+        // Regular audio controls
+        playBtn.addEventListener('click', playAudio);
+        stopBtn.addEventListener('click', () => {
+            stopAudioPlayback(statusElement, playBtn, stopBtn);
+        });
+
+        // TTS audio controls
+        ttsPlayBtn.addEventListener('click', function() {
+            if (!currentTTSFile) {
+                ttsStatusElement.textContent = "No audio file generated yet.";
+                return;
+            }
+
+            // Create new audio element if needed
+            if (!audioElement) {
+                audioElement = new Audio();
+            }
+
+            // Set the source to the current TTS file
+            audioElement.src = `http://localhost:8000/audio/${currentTTSFile}`;
+            audioElement.loop = false;
+
+            // Add ended event listener if not already added
+            audioElement.addEventListener('ended', function() {
+                ttsStatusElement.textContent = "Audio finished playing.";
+                ttsPlayBtn.disabled = false;
+                ttsStopBtn.disabled = true;
+                resetSphere();
+            });
+
+            playAudio();
+        });
+        ttsStopBtn.addEventListener('click', () => {
+            stopAudioPlayback(ttsStatusElement, ttsPlayBtn, ttsStopBtn);
         });
 
         // Reset sphere to original state
