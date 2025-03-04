@@ -244,7 +244,6 @@ class Model(nn.Module):
         speed: float = 1.0,
         lang_code: str = "af",
         split_pattern: str = r"\n+",
-        verbose: bool = False,
     ):
         pipeline = KokoroPipeline(
             model=self,
@@ -254,8 +253,6 @@ class Model(nn.Module):
 
         # Track overall generation time
         start_time = time.time()
-
-        metrics = []
 
         for segment_idx, (graphenes, phonemes, audio) in enumerate(
             pipeline(text, voice=voice, speed=speed, split_pattern=split_pattern)

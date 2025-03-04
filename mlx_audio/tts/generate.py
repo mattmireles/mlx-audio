@@ -8,7 +8,8 @@ import soundfile as sf
 
 from .audio_player import AudioPlayer
 from .utils import load_model
-
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
+import re
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -35,6 +36,7 @@ def parse_args():
         "--join_audio", action="store_true", help="Join all audio files into one"
     )
     parser.add_argument("--play", action="store_true", help="Play the output audio")
+    parser.add_argument("--split_pattern", type=str, default=r"\n+", help="Split pattern")
     args = parser.parse_args()
 
     if args.text is None:
@@ -59,23 +61,29 @@ def main():
             f"\033[94mLanguage:\033[0m {args.lang_code}"
         )
         print("==========")
-        results = model.generate(
+
+        audio_list = []
+        player = AudioPlayer() if args.play else None
+
+        text = re.split(args.split_pattern, args.text.strip())
+
+        print(f"\n\033[94mGenerating {len(text)} audio samples...\033[0m\n")
+
+        for i, result in enumerate(model.generate(
             text=args.text,
             voice=args.voice,
             speed=args.speed,
             lang_code=args.lang_code,
-            verbose=True,
-        )
-        print(
-            f"\033[92mAudio generated successfully, saving to\033[0m {args.file_prefix}!"
-        )
+            split_pattern=args.split_pattern,
+        )):
+            if args.play:
+                player.queue_audio(result.audio)
 
-        audio_list = []
-        for i, result in enumerate(results):
-            if args.join_audio or args.play:
+            if args.join_audio:
                 audio_list.append(result.audio)
             else:
                 sf.write(f"{args.file_prefix}_{i:03d}.wav", result.audio, 24000)
+
 
             if args.verbose:
                 print("==========")
@@ -93,18 +101,21 @@ def main():
                 print(f"Processing time:       {result.processing_time_seconds:.2f}s")
                 print(f"Peak memory usage:     {result.peak_memory_usage:.2f}GB")
 
+
+        print(
+            f"\033[92mAudio generated successfully, saving to\033[0m {args.file_prefix}!"
+        )
+
         if args.join_audio:
             print(f"Joining {len(audio_list)} audio files")
             audio = mx.concatenate(audio_list, axis=0)
             sf.write(f"{args.file_prefix}.wav", audio, 24000)
 
         if args.play:
-            audio = mx.concatenate(audio_list, axis=0)
-
-            player = AudioPlayer()
-            player.queue_audio(audio)
             player.wait_for_drain()
             player.stop()
+
+
     except ImportError as e:
         print(f"Import error: {e}")
         print(
