@@ -103,7 +103,7 @@ def main():
 
 
         print(
-            f"\033[92mAudio generated successfully, saving to\033[0m {args.file_prefix}!"
+            f"\n\033[92mAudio generated successfully, saving to\033[0m {args.file_prefix}!"
         )
 
         if args.join_audio:
