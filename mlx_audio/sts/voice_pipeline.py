@@ -18,7 +18,7 @@ import argparse
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class VoiceInterface:
+class VoicePipeline:
     def __init__(self,
                  silence_threshold=0.03,        # Threshold for determining silence
                  silence_duration=1.5,          # Duration of silence to trigger end of speech
@@ -329,7 +329,7 @@ def main():
     """Main function to start the voice interface"""
     # Create voice interface with default parameters
     args = parse_args()
-    interface = VoiceInterface(
+    pipeline = VoicePipeline(
         silence_threshold=args.silence_threshold,
         silence_duration=args.silence_duration,
         interruptible=True,
@@ -341,16 +341,16 @@ def main():
 
     # Start the interface
     try:
-        interface.start()
+        pipeline.start()
     except KeyboardInterrupt:
         print("\nExiting...")
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         # Try to clean up resources
-        if hasattr(interface, 'p') and interface.p:
-            interface.p.terminate()
+        if hasattr(pipeline, 'p') and pipeline.p:
+            pipeline.p.terminate()
     finally:
-        print("Voice interface stopped")
+        print("Voice pipeline stopped")
 
 if __name__ == "__main__":
     main()
