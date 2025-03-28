@@ -169,6 +169,9 @@ class VoicePipeline:
                             # Transcribe the audio
                             text = self._transcribe_audio(temp_wav)
 
+                            # Clear the cache
+                            mx.metal.clear_cache()
+
                             if text.strip():
                                 logger.info(f"Transcribed: {text}")
 
@@ -256,6 +259,8 @@ class VoicePipeline:
                 response_text = generate_text(
                     self.llm, self.tokenizer, prompt, verbose=True
                 )
+                # Clear the cache
+                mx.metal.clear_cache()
 
                 # Clean up the generated text
                 response_text = response_text.strip()
