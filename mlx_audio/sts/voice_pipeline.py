@@ -1,34 +1,42 @@
-import numpy as np
-import wave
+import argparse
+import logging
+import os
+import queue
 import threading
 import time
-import queue
-import logging
-from mlx_lm.utils import load as load_llm, generate as generate_text
-from mlx_audio.tts.utils import load_model as load_tts
-from mlx_audio.tts.generate import generate_audio
-import webrtcvad
-import os
-import pyaudio
-import mlx_whisper
+import wave
+
 import mlx.core as mx
-import argparse
+import mlx_whisper
+import numpy as np
+import pyaudio
+import webrtcvad
+from mlx_lm.utils import generate as generate_text
+from mlx_lm.utils import load as load_llm
+
+from mlx_audio.tts.generate import generate_audio
+from mlx_audio.tts.utils import load_model as load_tts
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
+
 class VoicePipeline:
-    def __init__(self,
-                 silence_threshold=0.03,        # Threshold for determining silence
-                 silence_duration=1.5,          # Duration of silence to trigger end of speech
-                 sample_rate=16000,             # Audio sample rate
-                 frame_duration_ms=30,          # Duration of each audio frame in ms
-                 interruptible=True,            # Allow interruptions during generation
-                 vad_mode=3,                    # WebRTC VAD aggressiveness (0-3)
-                 stt_model="mlx-community/whisper-large-v3-turbo",
-                 llm_model="Qwen/Qwen2.5-0.5B-Instruct",
-                 tts_model="mlx-community/Kokoro-82M-bf16"):
+    def __init__(
+        self,
+        silence_threshold=0.03,  # Threshold for determining silence
+        silence_duration=1.5,  # Duration of silence to trigger end of speech
+        sample_rate=16000,  # Audio sample rate
+        frame_duration_ms=30,  # Duration of each audio frame in ms
+        interruptible=True,  # Allow interruptions during generation
+        vad_mode=3,  # WebRTC VAD aggressiveness (0-3)
+        stt_model="mlx-community/whisper-large-v3-turbo",
+        llm_model="Qwen/Qwen2.5-0.5B-Instruct",
+        tts_model="mlx-community/Kokoro-82M-bf16",
+    ):
 
         # Audio parameters
         self.silence_threshold = silence_threshold
@@ -75,7 +83,6 @@ class VoicePipeline:
         # Using a smaller model for quick responses
         self.llm, self.tokenizer = load_llm(self.llm_model)
 
-
         logger.info("Loading text-to-speech model...")
         # Using TTS for speech synthesis
         try:
@@ -121,7 +128,7 @@ class VoicePipeline:
             channels=1,
             rate=self.sample_rate,
             input=True,
-            frames_per_buffer=frame_size
+            frames_per_buffer=frame_size,
         )
 
         logger.info("Listening for voice input...")
@@ -146,7 +153,10 @@ class VoicePipeline:
                     frames.append(frame)
 
                     # If silence duration threshold is reached, process the audio
-                    if silent_frames > (self.silence_duration * 1000) / self.frame_duration_ms:
+                    if (
+                        silent_frames
+                        > (self.silence_duration * 1000) / self.frame_duration_ms
+                    ):
                         logger.info("Silence detected, processing speech...")
                         if self.player:
                             self.player.stop(force=True)
@@ -167,7 +177,9 @@ class VoicePipeline:
 
                                 # Start generation in a separate thread
                                 if not self.generating:
-                                    threading.Thread(target=self._generate_response).start()
+                                    threading.Thread(
+                                        target=self._generate_response
+                                    ).start()
 
                             # Clean up temporary file
                             if os.path.exists(temp_wav):
@@ -197,11 +209,11 @@ class VoicePipeline:
     def _save_audio_frames(self, frames):
         """Save audio frames to a temporary WAV file"""
         temp_file = "temp_recording.wav"
-        wf = wave.open(temp_file, 'wb')
+        wf = wave.open(temp_file, "wb")
         wf.setnchannels(1)
         wf.setsampwidth(self.p.get_sample_size(pyaudio.paInt16))
         wf.setframerate(self.sample_rate)
-        wf.writeframes(b''.join(frames))
+        wf.writeframes(b"".join(frames))
         wf.close()
         return temp_file
 
@@ -234,13 +246,16 @@ class VoicePipeline:
 
                 messages = [
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": text}
+                    {"role": "user", "content": text},
                 ]
-                prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                prompt = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
 
                 # Generate response text
-                response_text = generate_text(self.llm, self.tokenizer, prompt, verbose=True)
-
+                response_text = generate_text(
+                    self.llm, self.tokenizer, prompt, verbose=True
+                )
 
                 # Clean up the generated text
                 response_text = response_text.strip()
@@ -277,7 +292,7 @@ class VoicePipeline:
                 file_prefix=temp_file,
                 sample_rate=24000,
                 play=True,
-                return_player=True
+                return_player=True,
             )
 
             # Clean up
@@ -316,14 +331,33 @@ class VoicePipeline:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Voice interface")
-    parser.add_argument("--silence_threshold", type=float, default=0.02, help="Silence threshold")
-    parser.add_argument("--silence_duration", type=float, default=1.2, help="Silence duration")
-    parser.add_argument("--stt_model", type=str, default="mlx-community/whisper-large-v3-turbo", help="STT model")
-    parser.add_argument("--llm_model", type=str, default="Qwen/Qwen2.5-0.5B-Instruct", help="LLM model")
-    parser.add_argument("--tts_model", type=str, default="mlx-community/Kokoro-82M-bf16", help="TTS model")
+    parser.add_argument(
+        "--silence_threshold", type=float, default=0.02, help="Silence threshold"
+    )
+    parser.add_argument(
+        "--silence_duration", type=float, default=1.2, help="Silence duration"
+    )
+    parser.add_argument(
+        "--stt_model",
+        type=str,
+        default="mlx-community/whisper-large-v3-turbo",
+        help="STT model",
+    )
+    parser.add_argument(
+        "--llm_model", type=str, default="Qwen/Qwen2.5-0.5B-Instruct", help="LLM model"
+    )
+    parser.add_argument(
+        "--tts_model",
+        type=str,
+        default="mlx-community/Kokoro-82M-bf16",
+        help="TTS model",
+    )
     # TODO: Add output directory for audio files
-    parser.add_argument("--output_dir", type=str, default="output", help="Output directory")
+    parser.add_argument(
+        "--output_dir", type=str, default="output", help="Output directory"
+    )
     return parser.parse_args()
+
 
 def main():
     """Main function to start the voice interface"""
@@ -336,7 +370,7 @@ def main():
         vad_mode=3,
         stt_model=args.stt_model,
         llm_model=args.llm_model,
-        tts_model=args.tts_model
+        tts_model=args.tts_model,
     )
 
     # Start the interface
@@ -347,10 +381,11 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         # Try to clean up resources
-        if hasattr(pipeline, 'p') and pipeline.p:
+        if hasattr(pipeline, "p") and pipeline.p:
             pipeline.p.terminate()
     finally:
         print("Voice pipeline stopped")
+
 
 if __name__ == "__main__":
     main()
