@@ -92,11 +92,13 @@ def generate_audio(
         # Load model
         if isinstance(model_path, str):
             model = load_model(model_path=model_path)
-        else:
+            print(f"\033[94mModel:\033[0m {model_path}")
+        elif isinstance(model_path, nn.Module):
             model = model_path
+        else:
+            raise ValueError(f"Invalid model path: {model_path}")
 
         print(
-            f"\n\033[94mModel:\033[0m {model_path}\n"
             f"\033[94mText:\033[0m {text}\n"
             f"\033[94mVoice:\033[0m {voice}\n"
             f"\033[94mSpeed:\033[0m {speed}x\n"
@@ -153,6 +155,9 @@ def generate_audio(
         if play:
             player.wait_for_drain()
             player.stop()
+
+        if kwargs.get("return_player", False):
+            return player
 
     except ImportError as e:
         print(f"Import error: {e}")
