@@ -195,7 +195,7 @@ def upload_to_hub(path: str, upload_repo: str, hf_path: str):
     card.text = dedent(
         f"""
         # {upload_repo}
-        This model was converted to MLX format from [`{hf_path}`]() using mlx-audio version **{__version__}**.
+        This model was converted to MLX format from [`{hf_path}`](https://huggingface.co/{hf_path}) using mlx-audio version **{__version__}**.
         Refer to the [original model card](https://huggingface.co/{hf_path}) for more details on the model.
         ## Use with mlx
 
