@@ -1,24 +1,23 @@
 import glob
-import shutil
 import importlib
 import logging
+import shutil
 from pathlib import Path
-from typing import List, Tuple, Optional
 from textwrap import dedent
-
+from typing import List, Optional, Tuple
 
 import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten
-from mlx_vlm.utils import load_config
-from mlx_lm.utils import (
-    get_model_path,
-    save_weights,
-    save_config,
-    quantize_model,
-    dequantize_model,
-)
 from mlx_lm.convert import mixed_quant_predicate_builder
+from mlx_lm.utils import (
+    dequantize_model,
+    get_model_path,
+    quantize_model,
+    save_config,
+    save_weights,
+)
+from mlx_vlm.utils import load_config
 
 MODEL_REMAPPING = {"outetts": "outetts"}
 MAX_FILE_SIZE_GB = 5
@@ -65,8 +64,9 @@ def get_model_and_args(model_type: str, model_name: List[str]):
     return arch, model_type
 
 
-
-def load_model(model_path: Path, lazy: bool = False, strict: bool = True, **kwargs) -> nn.Module:
+def load_model(
+    model_path: Path, lazy: bool = False, strict: bool = True, **kwargs
+) -> nn.Module:
     """
     Load and initialize the model from a given path.
 
@@ -222,7 +222,6 @@ def upload_to_hub(path: str, upload_repo: str, hf_path: str):
     print(f"Upload successful, go to https://huggingface.co/{upload_repo} for details.")
 
 
-
 def convert(
     hf_path: str,
     mlx_path: str = "mlx_model",
@@ -248,7 +247,6 @@ def convert(
     weights = dict(tree_flatten(model.parameters()))
     dtype = getattr(mx, dtype)
     weights = {k: v.astype(dtype) for k, v in weights.items()}
-
 
     if quantize and dequantize:
         raise ValueError("Choose either quantize or dequantize, not both.")
