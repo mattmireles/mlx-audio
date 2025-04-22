@@ -64,6 +64,41 @@ class TestConvert(unittest.TestCase):
             dequantize=False
         )
 
+    def test_quantized_conversion_invalid_group_size_raises_error(self):
+        """Tests if main raises ValueError for invalid group size."""
+        test_args = [
+            "--hf-path", "dummy_hf",
+            "--quantize",
+            "--q-group-size", "100", # Invalid: not 64 or 128
+            "--q-bits", "4"
+        ]
+
+        # Configure the mock to raise ValueError when called with q_group_size=100
+        def side_effect(*args, **kwargs):
+            if kwargs.get("q_group_size") == 100:
+                raise ValueError("[quantize] The requested group size 100 is not supported.")
+            return MagicMock() # Default return for other calls if needed
+
+        self.convert_mock.side_effect = side_effect
+
+        # Patch sys.argv and assert ValueError is raised
+        with patch.object(sys, 'argv', ['convert.py'] + test_args):
+            with self.assertRaisesRegex(ValueError, "requested group size 100 is not supported"):
+                main()
+
+        # Verify the mock was called (even though it raised an error)
+        self.convert_mock.assert_called_once_with(
+            hf_path="dummy_hf",
+            mlx_path="mlx_model",
+            quantize=True,
+            q_group_size=100,
+            q_bits=4,
+            quant_predicate=None,
+            dtype="float16",
+            upload_repo=None,
+            dequantize=False
+        )
+
     def test_quantization_recipes(self):
         for recipe in ["mixed_2_6", "mixed_3_6", "mixed_4_6"]:
             with self.subTest(recipe=recipe):
