@@ -33,6 +33,7 @@ class AudioTransformTrack(MediaStreamTrack):
     A media stream track that transforms audio frames from a source track.
     This can be used to process audio in real-time for WebRTC connections.
     """
+
     kind = "audio"
 
     def __init__(self, track, pipeline):
@@ -70,7 +71,10 @@ class AudioTransformTrack(MediaStreamTrack):
             self.buffer.append(pcm_frame)
 
             # If silence duration threshold is reached, process the audio
-            if self.silent_frames > (self.silence_duration * 1000) / self.frame_duration_ms:
+            if (
+                self.silent_frames
+                > (self.silence_duration * 1000) / self.frame_duration_ms
+            ):
                 logger.info("Silence detected in WebRTC stream, processing speech...")
 
                 # Save and process audio
@@ -103,7 +107,7 @@ class VoicePipeline:
         webrtc_enabled=False,  # Enable WebRTC functionality
         signaling_server=None,  # Signaling server for WebRTC
         output_dir="output",
-        signaling_port=8080
+        signaling_port=8080,
     ):
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
@@ -226,7 +230,7 @@ class VoicePipeline:
                 rate=self.sample_rate,
                 input=True,
                 frames_per_buffer=frame_size,
-            )
+            ),
         )
 
         logger.info("Listening for voice input...")
@@ -242,8 +246,7 @@ class VoicePipeline:
             while self.recording:
                 # Read frame non-blockingly
                 frame = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: stream.read(frame_size, exception_on_overflow=False)
+                    None, lambda: stream.read(frame_size, exception_on_overflow=False)
                 )
 
                 # Check if this frame contains speech
@@ -266,7 +269,12 @@ class VoicePipeline:
                         if self.player:
                             # Stop player asynchronously
                             await asyncio.get_event_loop().run_in_executor(
-                                None, lambda: self.player.stop(force=True) if self.player else None
+                                None,
+                                lambda: (
+                                    self.player.stop(force=True)
+                                    if self.player
+                                    else None
+                                ),
                             )
 
                         # Process the recorded audio
@@ -315,8 +323,7 @@ class VoicePipeline:
         finally:
             # Clean up asynchronously
             await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: (stream.stop_stream(), stream.close())
+                None, lambda: (stream.stop_stream(), stream.close())
             )
             self.recording = False
 
@@ -327,8 +334,7 @@ class VoicePipeline:
 
         # Run file operations in executor to avoid blocking
         await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: self._write_wav_file(temp_file, frames)
+            None, lambda: self._write_wav_file(temp_file, frames)
         )
 
         return temp_file
@@ -339,7 +345,7 @@ class VoicePipeline:
         wf.setnchannels(1)
 
         # Handle PyAudio if available
-        if hasattr(self, 'p'):
+        if hasattr(self, "p"):
             wf.setsampwidth(self.p.get_sample_size(pyaudio.paInt16))
         else:
             # Default to 2 bytes (16-bit) if PyAudio not available
@@ -352,7 +358,9 @@ class VoicePipeline:
     async def _process_webrtc_audio(self, audio_data):
         """Process audio received from WebRTC asynchronously"""
         # Save audio to a temporary file
-        temp_wav = await self._save_audio_frames([audio_data], prefix="webrtc_recording")
+        temp_wav = await self._save_audio_frames(
+            [audio_data], prefix="webrtc_recording"
+        )
 
         # Transcribe the audio
         text = await self._transcribe_audio(temp_wav)
@@ -376,7 +384,9 @@ class VoicePipeline:
             # Run transcription in executor to avoid blocking
             result = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: mlx_whisper.transcribe(audio_file, path_or_hf_repo=self.stt_model)
+                lambda: mlx_whisper.transcribe(
+                    audio_file, path_or_hf_repo=self.stt_model
+                ),
             )
             return result["text"]
         except Exception as e:
@@ -420,17 +430,21 @@ class VoicePipeline:
                     None,
                     lambda: self.tokenizer.apply_chat_template(
                         messages, tokenize=False, add_generation_prompt=True
-                    )
+                    ),
                 )
 
                 # Generate response text in executor
                 response_text = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: generate_text(self.llm, self.tokenizer, prompt, verbose=True)
+                    lambda: generate_text(
+                        self.llm, self.tokenizer, prompt, verbose=True
+                    ),
                 )
 
                 # Clear the cache
-                await asyncio.get_event_loop().run_in_executor(None, mx.metal.clear_cache)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, mx.metal.clear_cache
+                )
 
                 # Clean up the generated text
                 response_text = response_text.strip()
@@ -481,8 +495,8 @@ class VoicePipeline:
                 file_prefix=temp_file,
                 sample_rate=24000,
                 play=False,
-                return_player=False
-            )
+                return_player=False,
+            ),
         )
 
     async def _speak_response(self):
@@ -509,7 +523,7 @@ class VoicePipeline:
                     sample_rate=24000,
                     play=True,
                     return_player=True,
-                )
+                ),
             )
 
             # Wait for playback to complete
@@ -560,7 +574,9 @@ class VoicePipeline:
         await self.init_models()
 
         # Create signaling
-        self.signaling = TcpSocketSignaling(self.signaling_server, port=self.signaling_port)
+        self.signaling = TcpSocketSignaling(
+            self.signaling_server, port=self.signaling_port
+        )
         logger.info(f"WebRTC server started on {self.signaling_server}")
 
         # Main WebRTC connection loop
@@ -605,23 +621,36 @@ async def main():
         "--webrtc", action="store_true", help="Enable WebRTC functionality"
     )
     parser.add_argument(
-        "--signaling", type=str, default="0.0.0.0:8080", help="Signaling server for WebRTC"
+        "--signaling",
+        type=str,
+        default="0.0.0.0:8080",
+        help="Signaling server for WebRTC",
     )
     parser.add_argument(
-        "--output-dir", type=str, default="output", help="Output directory for audio files"
+        "--output-dir",
+        type=str,
+        default="output",
+        help="Output directory for audio files",
     )
     parser.add_argument(
-        "--stt_model", type=str, default="mlx-community/whisper-large-v3-turbo", help="STT model"
+        "--stt_model",
+        type=str,
+        default="mlx-community/whisper-large-v3-turbo",
+        help="STT model",
     )
     parser.add_argument(
-        "--tts_model", type=str, default="mlx-community/Kokoro-82M-bf16", help="TTS model"
+        "--tts_model",
+        type=str,
+        default="mlx-community/Kokoro-82M-bf16",
+        help="TTS model",
     )
     parser.add_argument(
-        "--llm_model", type=str, default="mlx-community/Qwen2.5-0.5B-Instruct-4bit", help="LLM model"
+        "--llm_model",
+        type=str,
+        default="mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+        help="LLM model",
     )
-    parser.add_argument(
-        "--vad_mode", type=int, default=3, help="VAD mode"
-    )
+    parser.add_argument("--vad_mode", type=int, default=3, help="VAD mode")
     parser.add_argument(
         "--silence_duration", type=float, default=3.0, help="Silence duration"
     )
@@ -637,7 +666,7 @@ async def main():
         tts_model=args.tts_model,
         llm_model=args.llm_model,
         vad_mode=args.vad_mode,
-        silence_duration=args.silence_duration
+        silence_duration=args.silence_duration,
     )
 
     if args.webrtc:
