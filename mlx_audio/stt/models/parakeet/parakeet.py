@@ -93,9 +93,7 @@ class ParakeetTDTCTCArgs(ParakeetTDTArgs):
     aux_ctc: AuxCTCArgs
 
 
-class BaseModel(nn.Module):
-    """Base parakeet model for interface purpose"""
-
+class Model(nn.Module):
     def __init__(self, preprocess_args: PreprocessArgs):
         super().__init__()
 
@@ -249,7 +247,7 @@ class BaseModel(nn.Module):
         return model
 
 
-class ParakeetTDT(BaseModel):
+class ParakeetTDT(Model):
     """MLX Implementation of Parakeet-TDT Model"""
 
     def __init__(self, args: ParakeetTDTArgs):
@@ -358,7 +356,7 @@ class ParakeetTDT(BaseModel):
         return results
 
 
-class ParakeetRNNT(BaseModel):
+class ParakeetRNNT(Model):
     """MLX Implementation of Parakeet-RNNT Model"""
 
     def __init__(self, args: ParakeetRNNTArgs):
@@ -457,7 +455,7 @@ class ParakeetRNNT(BaseModel):
         return results
 
 
-class ParakeetCTC(BaseModel):
+class ParakeetCTC(Model):
     """MLX Implementation of Parakeet-CTC Model"""
 
     def __init__(self, args: ParakeetCTCArgs):
