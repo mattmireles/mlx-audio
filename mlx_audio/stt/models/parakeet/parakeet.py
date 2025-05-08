@@ -133,8 +133,6 @@ class BaseModel(nn.Module):
         audio_path = Path(path)
         audio_data = load_audio(audio_path, self.preprocessor_config.sample_rate, dtype=dtype)
 
-        print(audio_data)
-
         if chunk_duration is None:
             mel = log_mel_spectrogram(audio_data, self.preprocessor_config)
 
