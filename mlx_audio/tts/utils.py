@@ -426,7 +426,6 @@ def convert(
             dest_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy(file, dest_dir)
 
-
     del model
     save_weights(mlx_path, weights, donate_weights=True)
 

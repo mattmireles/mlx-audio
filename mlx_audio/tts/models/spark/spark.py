@@ -315,7 +315,6 @@ class Model(nn.Module):
                     ]
                 )[None, ...]
 
-
             # Convert semantic tokens back to waveform
             audio = self._audio_tokenizer.detokenize(
                 global_token_ids.astype(mx.int32),
