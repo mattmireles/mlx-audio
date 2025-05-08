@@ -15,7 +15,7 @@ from mlx_audio.stt.models.parakeet.alignment import (
     tokens_to_sentences,
 )
 from mlx_audio.stt.models.parakeet.audio import log_mel_spectrogram, PreprocessArgs
-from mlx_audio.stt.models.whisper.audio import load_audio
+from mlx_audio.stt.utils import load_audio
 from mlx_audio.stt.models.parakeet.conformer import Conformer, ConformerArgs
 from mlx_audio.stt.models.parakeet.ctc import AuxCTCArgs, ConvASRDecoder, ConvASRDecoderArgs
 from mlx_audio.stt.models.parakeet.rnnt import JointArgs, JointNetwork, PredictArgs, PredictNetwork
