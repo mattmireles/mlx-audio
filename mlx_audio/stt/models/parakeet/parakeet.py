@@ -99,14 +99,15 @@ class Model(nn.Module):
 
         self.preprocessor_config = preprocess_args
 
-    def generate(self, mel: mx.array) -> list[AlignedResult]:
+    def decode(self, mel: mx.array) -> list[AlignedResult]:
         """
-        Generate with skip token logic for the Parakeet model, handling batches and single input. Uses greedy decoding.
+        Decode mel spectrograms to produce transcriptions with the Parakeet model.
+        Handles batches and single input. Uses greedy decoding.
         mel: [batch, sequence, mel_dim] or [sequence, mel_dim]
         """
         raise NotImplementedError
 
-    def transcribe(
+    def generate(
         self,
         path: Path | str,
         *,
@@ -134,14 +135,14 @@ class Model(nn.Module):
         if chunk_duration is None:
             mel = log_mel_spectrogram(audio_data, self.preprocessor_config)
 
-            return self.generate(mel)[0]
+            return self.decode(mel)[0]
 
         audio_length_seconds = len(audio_data) / self.preprocessor_config.sample_rate
 
         if audio_length_seconds <= chunk_duration:
             mel = log_mel_spectrogram(audio_data, self.preprocessor_config)
 
-            return self.generate(mel)[0]
+            return self.decode(mel)[0]
 
         chunk_samples = int(chunk_duration * self.preprocessor_config.sample_rate)
         overlap_samples = int(overlap_duration * self.preprocessor_config.sample_rate)
@@ -158,7 +159,7 @@ class Model(nn.Module):
             chunk_mel = log_mel_spectrogram(chunk_audio, self.preprocessor_config)
 
 
-            chunk_result = self.generate(chunk_mel)[0]
+            chunk_result = self.decode(chunk_mel)[0]
 
             chunk_offset = start / self.preprocessor_config.sample_rate
             for sentence in chunk_result.sentences:
@@ -220,7 +221,7 @@ class Model(nn.Module):
     @classmethod
     def from_pretrained(
         cls,
-        hf_id_or_path: str,
+        path_or_hf_repo: str,
         *,
         dtype: mx.Dtype = mx.bfloat16
     ):
@@ -230,11 +231,11 @@ class Model(nn.Module):
         from mlx.utils import tree_flatten, tree_unflatten
 
         try:
-            config = json.load(open(hf_hub_download(hf_id_or_path, "config.json"), "r"))
-            weight = hf_hub_download(hf_id_or_path, "model.safetensors")
+            config = json.load(open(hf_hub_download(path_or_hf_repo, "config.json"), "r"))
+            weight = hf_hub_download(path_or_hf_repo, "model.safetensors")
         except Exception:
-            config = json.load(open(Path(hf_id_or_path) / "config.json", "r"))
-            weight = str(Path(hf_id_or_path) / "model.safetensors")
+            config = json.load(open(Path(path_or_hf_repo) / "config.json", "r"))
+            weight = str(Path(path_or_hf_repo) / "model.safetensors")
 
         model = cls.from_config(config)
         model.load_weights(weight)
@@ -248,7 +249,6 @@ class Model(nn.Module):
 
 
 class ParakeetTDT(Model):
-    """MLX Implementation of Parakeet-TDT Model"""
 
     def __init__(self, args: ParakeetTDTArgs):
         super().__init__(args.preprocessor)
@@ -269,7 +269,7 @@ class ParakeetTDT(Model):
         self.decoder = PredictNetwork(args.decoder)
         self.joint = JointNetwork(args.joint)
 
-    def generate(self, mel: mx.array) -> list[AlignedResult]:
+    def decode(self, mel: mx.array) -> list[AlignedResult]:
         """
         Generate with skip token logic for the Parakeet model, handling batches and single input. Uses greedy decoding.
         mel: [batch, sequence, mel_dim] or [sequence, mel_dim]
@@ -357,7 +357,6 @@ class ParakeetTDT(Model):
 
 
 class ParakeetRNNT(Model):
-    """MLX Implementation of Parakeet-RNNT Model"""
 
     def __init__(self, args: ParakeetRNNTArgs):
         super().__init__(args.preprocessor)
@@ -375,7 +374,7 @@ class ParakeetRNNT(Model):
         self.decoder = PredictNetwork(args.decoder)
         self.joint = JointNetwork(args.joint)
 
-    def generate(self, mel: mx.array) -> list[AlignedResult]:
+    def decode(self, mel: mx.array) -> list[AlignedResult]:
         """
         Generate with skip token logic for the Parakeet model, handling batches and single input. Uses greedy decoding.
         mel: [batch, sequence, mel_dim] or [sequence, mel_dim]
@@ -456,7 +455,6 @@ class ParakeetRNNT(Model):
 
 
 class ParakeetCTC(Model):
-    """MLX Implementation of Parakeet-CTC Model"""
 
     def __init__(self, args: ParakeetCTCArgs):
         super().__init__(args.preprocessor)
@@ -468,7 +466,7 @@ class ParakeetCTC(Model):
         self.encoder = Conformer(args.encoder)
         self.decoder = ConvASRDecoder(args.decoder)
 
-    def generate(self, mel: mx.array) -> list[AlignedResult]:
+    def decode(self, mel: mx.array) -> list[AlignedResult]:
         """
         Generate with CTC decoding for the Parakeet model, handling batches and single input. Uses greedy decoding.
         mel: [batch, sequence, mel_dim] or [sequence, mel_dim]
@@ -569,9 +567,7 @@ class ParakeetCTC(Model):
 
 
 class ParakeetTDTCTC(ParakeetTDT):
-    """MLX Implementation of Parakeet-TDT-CTC Model
-
-    Has ConvASRDecoder decoder in `.ctc_decoder` but `.generate` uses TDT decoder all the times (Please open an issue if you need CTC decoder use-case!)"""
+    """Has ConvASRDecoder decoder in `.ctc_decoder` but `.generate` uses TDT decoder all the times (Please open an issue if you need CTC decoder use-case!)"""
 
     def __init__(self, args: ParakeetTDTCTCArgs):
         super().__init__(args)
