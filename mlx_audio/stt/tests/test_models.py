@@ -10,6 +10,7 @@ import numpy as np
 from mlx_audio.stt.models.whisper.whisper import Model, ModelDimensions, STTOutput
 from mlx_audio.stt.models.whisper.decoding import DecodingResult, DecodingOptions
 from mlx_audio.stt.models.whisper.audio import N_FRAMES, HOP_LENGTH, SAMPLE_RATE, N_SAMPLES
+from mlx_audio.stt.models.parakeet.parakeet import ParakeetTDT
 from unittest.mock import ANY
 
 
@@ -200,6 +201,122 @@ class TestWhisperModel(unittest.TestCase):
         args_pad_call, _ = mock_pad_or_trim.call_args
         self.assertEqual(args_pad_call[0].shape, (100, self.dims.n_mels))
         self.assertEqual(args_pad_call[1], N_FRAMES)
+
+
+class TestParakeetModel(unittest.TestCase):
+
+    @patch('mlx.nn.Module.load_weights')
+    @patch("mlx_audio.stt.models.parakeet.parakeet.hf_hub_download")
+    @patch("mlx_audio.stt.models.parakeet.parakeet.json.load")
+    @patch("mlx_audio.stt.models.parakeet.parakeet.open", new_callable=MagicMock)
+    @patch("mlx.core.load")
+    def test_parakeet_tdt_from_pretrained(
+        self,
+        mock_mlx_core_load,
+        mock_parakeet_module_open,
+        mock_parakeet_json_load,
+        mock_hf_hub_download,
+        mock_module_load_weights,
+    ):
+        """Test ParakeetTDT.from_pretrained method."""
+
+        dummy_repo_id = "dummy/parakeet-tdt-model"
+        dummy_config_path = "dummy_path/config.json"
+        dummy_weights_path = "dummy_path/model.safetensors"
+
+        # Configure hf_hub_download
+        def hf_hub_download_side_effect(repo_id_arg, filename_arg):
+            if repo_id_arg == dummy_repo_id and filename_arg == "config.json":
+                return dummy_config_path
+            if repo_id_arg == dummy_repo_id and filename_arg == "model.safetensors":
+                return dummy_weights_path
+            raise ValueError(f"Unexpected hf_hub_download call: {repo_id_arg}, {filename_arg}")
+        mock_hf_hub_download.side_effect = hf_hub_download_side_effect
+
+        # Dummy config content
+        dummy_vocabulary = [" ", "a", "b", "c"]
+        dummy_config_dict = {
+            "target": "nemo.collections.asr.models.rnnt_bpe_models.EncDecRNNTBPEModel",
+            "model_defaults": {"tdt_durations": [0, 1, 2, 3]},
+            "preprocessor": {
+                "sample_rate": 16000, "normalize": "per_feature",
+                "window_size": 0.02, "window_stride": 0.01, "window": "hann",
+                "features": 80, "n_fft": 512, "dither": 1e-05, "pad_to": 0, "pad_value": 0.0
+            },
+            "encoder": {
+                "feat_in": 80, "n_layers": 17, "d_model": 512, "conv_dim": 512,
+                "n_heads": 8, "self_attention_model": "rel_pos",
+                "subsampling": "dw_striding", "causal_downsampling": False,
+                "pos_emb_max_len": 5000, "ff_expansion_factor": 4, "subsampling_factor": 4,
+                "subsampling_conv_channels": 512, "dropout_rate": 0.1,
+                "attention_dropout_rate": 0.1, "conv_dropout_rate": 0.1,
+                "conv_kernel_size": 31, "causal_depthwise_conv": False
+            },
+            "decoder": {
+                "blank_as_pad": True,
+                "vocab_size": len(dummy_vocabulary),
+                "input_dim": 512,
+                "hidden_dim": 512,
+                "output_dim": 1024,
+                "num_layers": 1,
+                "dropout_rate": 0.1,
+                "prednet": {
+                    "input_dim": 512,
+                    "pred_hidden": 512,
+                    "output_dim": 1024,
+                    "pred_rnn_layers": 1,
+                    "dropout_rate": 0.1
+                }
+            },
+            "joint": {
+                "input_dim_encoder": 512,
+                "input_dim_decoder": 1024,
+                "num_classes": len(dummy_vocabulary) + 1,
+                "joint_dropout_rate": 0.1,
+                "vocabulary": dummy_vocabulary,
+                "jointnet": {
+                    "encoder_hidden": 512,
+                    "pred_hidden": 1024,
+                    "joint_hidden": 512,
+                    "activation": "relu"
+                }
+            },
+            "decoding": {
+                "model_type": "tdt",
+                "durations": [0, 1, 2, 3],
+                "greedy": {"max_symbols": 10}
+            }
+        }
+
+        # Configure mocks for config loading
+        mock_file_object_for_context_manager = MagicMock() # This is what __enter__ would return
+        mock_parakeet_module_open.return_value.__enter__.return_value = mock_file_object_for_context_manager
+        # If open is used not as a context manager, its direct return value is the file handle
+        # json.load will be called with mock_parakeet_module_open.return_value
+
+        mock_parakeet_json_load.return_value = dummy_config_dict
+
+        mock_mlx_core_load.return_value = {
+            "some.valid.path.if.needed": mx.array([0.0])
+        }
+
+
+        model = ParakeetTDT.from_pretrained(dummy_repo_id, dtype=mx.float32)
+
+
+        self.assertIsInstance(model, ParakeetTDT)
+
+        mock_hf_hub_download.assert_any_call(dummy_repo_id, "config.json")
+        mock_hf_hub_download.assert_any_call(dummy_repo_id, "model.safetensors")
+
+
+        self.assertEqual(model.preprocessor_config.sample_rate, 16000)
+        self.assertEqual(model.preprocessor_config.features, 80)
+        self.assertEqual(model.encoder_config.d_model, 512) # d_model is correct for ConformerArgs
+        self.assertEqual(model.vocabulary, dummy_vocabulary)
+        self.assertEqual(model.durations, [0,1,2,3])
+
+
 
 
 if __name__ == "__main__":

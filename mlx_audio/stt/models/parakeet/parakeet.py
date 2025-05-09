@@ -6,6 +6,11 @@ import mlx.core as mx
 import mlx.nn as nn
 from dacite import from_dict
 
+import json
+
+from huggingface_hub import hf_hub_download
+from mlx.utils import tree_flatten, tree_unflatten
+
 from mlx_audio.stt.models.parakeet import tokenizer
 from mlx_audio.stt.models.parakeet.alignment import (
     AlignedResult,
@@ -229,10 +234,6 @@ class Model(nn.Module):
     @classmethod
     def from_pretrained(cls, path_or_hf_repo: str, *, dtype: mx.Dtype = mx.bfloat16):
         """Loads model from Hugging Face or local directory"""
-        import json
-
-        from huggingface_hub import hf_hub_download
-        from mlx.utils import tree_flatten, tree_unflatten
 
         try:
             config = json.load(
