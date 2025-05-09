@@ -1,21 +1,20 @@
+import importlib
+import logging
 from pathlib import Path
+from typing import List, Optional
 
 import mlx.core as mx
 import numpy as np
 import soundfile as sf
-from scipy import signal
-
-import importlib
-import logging
-from typing import List, Optional
-
 from huggingface_hub import snapshot_download
+from scipy import signal
 
 SAMPLE_RATE = 16000
 
 MODEL_REMAPPING = {}
 MAX_FILE_SIZE_GB = 5
 MODEL_CONVERSION_DTYPES = ["float16", "bfloat16", "float32"]
+
 
 def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
     gcd = np.gcd(orig_sr, target_sr)
@@ -50,7 +49,6 @@ def load_audio(
     if sample_rate != sr:
         audio = resample_audio(audio, sample_rate, sr)
     return mx.array(audio, dtype=dtype).mean(axis=1)
-
 
 
 def get_model_path(path_or_hf_repo: str, revision: Optional[str] = None) -> Path:
@@ -188,7 +186,6 @@ def load_model(model_path: str, lazy: bool = False, strict: bool = True, **kwarg
         model_name = model_path.parts[index + 1].lower().split("--")[-1].split("-")
     else:
         raise ValueError(f"Invalid model path type: {type(model_path)}")
-
 
     model_class, model_type = get_model_and_args(
         model_type=model_type, model_name=model_name

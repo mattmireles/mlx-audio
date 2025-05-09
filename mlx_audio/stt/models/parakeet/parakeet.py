@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -5,9 +6,6 @@ from typing import Callable, Optional
 import mlx.core as mx
 import mlx.nn as nn
 from dacite import from_dict
-
-import json
-
 from huggingface_hub import hf_hub_download
 from mlx.utils import tree_flatten, tree_unflatten
 

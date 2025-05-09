@@ -56,6 +56,7 @@ def _get_end(segments: List[dict]) -> Optional[float]:
         segments[-1]["end"] if segments else None,
     )
 
+
 @dataclass
 class STTOutput:
     text: str

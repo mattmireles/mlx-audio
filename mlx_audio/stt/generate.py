@@ -8,12 +8,23 @@ from mlx_audio.stt.utils import load_model
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Generate transcriptions from audio files")
+    parser = argparse.ArgumentParser(
+        description="Generate transcriptions from audio files"
+    )
     parser.add_argument("--model", type=str, required=True, help="Path to the model")
-    parser.add_argument("--audio", type=str, required=True, help="Path to the audio file")
-    parser.add_argument("--output", type=str, required=True, help="Path to save the output")
-    parser.add_argument("--format", type=str, default="txt", choices=["txt", "srt", "vtt", "json"],
-                        help="Output format (txt, srt, vtt, or json)")
+    parser.add_argument(
+        "--audio", type=str, required=True, help="Path to the audio file"
+    )
+    parser.add_argument(
+        "--output", type=str, required=True, help="Path to save the output"
+    )
+    parser.add_argument(
+        "--format",
+        type=str,
+        default="txt",
+        choices=["txt", "srt", "vtt", "json"],
+        help="Output format (txt, srt, vtt, or json)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     return parser.parse_args()
 
@@ -40,7 +51,9 @@ def save_as_srt(segments, output_path: str):
     with open(f"{output_path}.srt", "w", encoding="utf-8") as f:
         for i, sentence in enumerate(segments.sentences, 1):
             f.write(f"{i}\n")
-            f.write(f"{format_timestamp(sentence.start)} --> {format_timestamp(sentence.end)}\n")
+            f.write(
+                f"{format_timestamp(sentence.start)} --> {format_timestamp(sentence.end)}\n"
+            )
             f.write(f"{sentence.text}\n\n")
 
 
@@ -52,13 +65,17 @@ def save_as_vtt(segments, output_path: str):
 
             for i, sentence in enumerate(sentences, 1):
                 f.write(f"{i}\n")
-                f.write(f"{format_vtt_timestamp(sentence.start)} --> {format_vtt_timestamp(sentence.end)}\n")
+                f.write(
+                    f"{format_vtt_timestamp(sentence.start)} --> {format_vtt_timestamp(sentence.end)}\n"
+                )
                 f.write(f"{sentence.text}\n\n")
         else:
             sentences = segments.segments
             for i, token in enumerate(sentences, 1):
                 f.write(f"{i}\n")
-                f.write(f"{format_vtt_timestamp(token['start'])} --> {format_vtt_timestamp(token['end'])}\n")
+                f.write(
+                    f"{format_vtt_timestamp(token['start'])} --> {format_vtt_timestamp(token['end'])}\n"
+                )
                 f.write(f"{token['text']}\n\n")
 
 
@@ -77,13 +94,13 @@ def save_as_json(segments, output_path: str):
                             "text": t.text,
                             "start": t.start,
                             "end": t.end,
-                            "duration": t.duration
+                            "duration": t.duration,
                         }
                         for t in s.tokens
-                    ]
+                    ],
                 }
                 for s in segments.sentences
-            ]
+            ],
         }
     else:
         result = {
@@ -93,17 +110,23 @@ def save_as_json(segments, output_path: str):
                     "text": s["text"],
                     "start": s["start"],
                     "end": s["end"],
-                    "duration": s["end"] - s["start"]
+                    "duration": s["end"] - s["start"],
                 }
                 for s in segments.segments
-            ]
+            ],
         }
 
     with open(f"{output_path}.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
 
-def generate(model_path: str, audio_path: str, output_path: str, format: str = "txt", verbose: bool = True):
+def generate(
+    model_path: str,
+    audio_path: str,
+    output_path: str,
+    format: str = "txt",
+    verbose: bool = True,
+):
     model = load_model(model_path)
     print(f"\n\033[94mModel:\033[0m {model_path}")
     print(f"\033[94mAudio path:\033[0m {audio_path}")

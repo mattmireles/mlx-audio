@@ -135,7 +135,6 @@ def get_model_and_args(model_type: str, model_name: List[str]):
     return arch, model_type
 
 
-
 def load_model(
     model_path: Path, lazy: bool = False, strict: bool = True, **kwargs
 ) -> nn.Module:
