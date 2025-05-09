@@ -230,9 +230,12 @@ class DwStridingSubsampling(nn.Module):
         if new_batch_size == 0:
             return x, False
 
-        return mx.concat(
-            [self.conv_forward(chunk) for chunk in mx.split(x, new_batch_size, 0)]
-        ), True
+        return (
+            mx.concat(
+                [self.conv_forward(chunk) for chunk in mx.split(x, new_batch_size, 0)]
+            ),
+            True,
+        )
 
     def __call__(self, x: mx.array, lengths: mx.array) -> tuple[mx.array, mx.array]:
         for _ in range(self._sampling_num):

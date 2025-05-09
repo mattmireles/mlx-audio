@@ -7,6 +7,7 @@ from typing import Optional, Union
 import mlx.core as mx
 import numpy as np
 from scipy import signal
+
 from mlx_audio.stt.utils import load_audio
 
 # hard-coded audio hyperparameters

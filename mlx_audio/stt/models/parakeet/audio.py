@@ -2,10 +2,10 @@ import functools
 import math
 import shutil
 from dataclasses import dataclass
-from pathlib import Path
 from functools import lru_cache
-from typing import Optional, Union
+from pathlib import Path
 from subprocess import CalledProcessError, run
+from typing import Optional, Union
 
 import librosa
 import mlx.core as mx
@@ -34,7 +34,6 @@ class PreprocessArgs:
         return int(self.window_stride * self.sample_rate)
 
 
-
 @lru_cache(maxsize=None)
 def hanning(size):
     return mx.array(
@@ -48,10 +47,16 @@ def hamming(size):
         [0.54 - 0.46 * math.cos(2 * math.pi * n / (size - 1)) for n in range(size)]
     )
 
+
 @lru_cache(maxsize=None)
 def blackman(size):
     return mx.array(
-        [0.42 - 0.5 * math.cos(2 * math.pi * n / (size - 1)) + 0.08 * math.cos(4 * math.pi * n / (size - 1)) for n in range(size)]
+        [
+            0.42
+            - 0.5 * math.cos(2 * math.pi * n / (size - 1))
+            + 0.08 * math.cos(4 * math.pi * n / (size - 1))
+            for n in range(size)
+        ]
     )
 
 
@@ -95,7 +100,6 @@ def stft(
     shape = [t, n_fft]
     x = mx.as_strided(x, shape=shape, strides=strides)
     return mx.fft.rfft(x * window)
-
 
 
 @lru_cache(maxsize=None)
@@ -185,18 +189,26 @@ def log_mel_spectrogram(x: mx.array, args: PreprocessArgs) -> mx.array:
     window = (
         hanning(args.win_length).astype(x.dtype)
         if args.window == "hanning"
-        else hamming(args.win_length).astype(x.dtype)
-        if args.window == "hamming"
-        else blackman(args.win_length).astype(x.dtype)
-        if args.window == "blackman"
-        else bartlett(args.win_length).astype(x.dtype)
-        if args.window == "bartlett"
-        else None
+        else (
+            hamming(args.win_length).astype(x.dtype)
+            if args.window == "hamming"
+            else (
+                blackman(args.win_length).astype(x.dtype)
+                if args.window == "blackman"
+                else (
+                    bartlett(args.win_length).astype(x.dtype)
+                    if args.window == "bartlett"
+                    else None
+                )
+            )
+        )
     )
 
     x = stft(x, args.n_fft, args.hop_length, args.win_length, window)
     x = mx.square(mx.abs(x)).astype(original_dtype)
-    filters = mel_filters(args.sample_rate, args.n_fft, args.features, norm=args.normalize, mel_scale=None)
+    filters = mel_filters(
+        args.sample_rate, args.n_fft, args.features, norm=args.normalize, mel_scale=None
+    )
     x = filters.astype(x.dtype) @ x.T
 
     x = mx.log(x + 1e-5)

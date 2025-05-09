@@ -1,9 +1,9 @@
-
-import soundfile as sf
-import numpy as np
 from typing import Optional
-from scipy import signal
+
 import mlx.core as mx
+import numpy as np
+import soundfile as sf
+from scipy import signal
 
 SAMPLE_RATE = 16000
 
@@ -16,7 +16,12 @@ def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarra
     return resampled
 
 
-def load_audio(file: str = Optional[str], sr: int = SAMPLE_RATE, from_stdin=False, dtype: mx.Dtype = mx.float32):
+def load_audio(
+    file: str = Optional[str],
+    sr: int = SAMPLE_RATE,
+    from_stdin=False,
+    dtype: mx.Dtype = mx.float32,
+):
     """
     Open an audio file and read as mono waveform, resampling as necessary
 

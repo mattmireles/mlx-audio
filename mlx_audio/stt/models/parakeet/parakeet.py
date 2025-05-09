@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from dacite import from_dict
 from pathlib import Path
 from typing import Callable, Optional
 
 import mlx.core as mx
 import mlx.nn as nn
+from dacite import from_dict
 
 from mlx_audio.stt.models.parakeet import tokenizer
 from mlx_audio.stt.models.parakeet.alignment import (
@@ -14,12 +14,20 @@ from mlx_audio.stt.models.parakeet.alignment import (
     sentences_to_result,
     tokens_to_sentences,
 )
-from mlx_audio.stt.models.parakeet.audio import log_mel_spectrogram, PreprocessArgs
-from mlx_audio.stt.utils import load_audio
+from mlx_audio.stt.models.parakeet.audio import PreprocessArgs, log_mel_spectrogram
 from mlx_audio.stt.models.parakeet.conformer import Conformer, ConformerArgs
-from mlx_audio.stt.models.parakeet.ctc import AuxCTCArgs, ConvASRDecoder, ConvASRDecoderArgs
-from mlx_audio.stt.models.parakeet.rnnt import JointArgs, JointNetwork, PredictArgs, PredictNetwork
-
+from mlx_audio.stt.models.parakeet.ctc import (
+    AuxCTCArgs,
+    ConvASRDecoder,
+    ConvASRDecoderArgs,
+)
+from mlx_audio.stt.models.parakeet.rnnt import (
+    JointArgs,
+    JointNetwork,
+    PredictArgs,
+    PredictNetwork,
+)
+from mlx_audio.stt.utils import load_audio
 
 
 @dataclass
@@ -42,7 +50,6 @@ class PreprocessArgs:
     @property
     def hop_length(self) -> int:
         return int(self.window_stride * self.sample_rate)
-
 
 
 @dataclass
@@ -130,7 +137,9 @@ class Model(nn.Module):
             Transcription result with aligned tokens and sentences
         """
         audio_path = Path(path)
-        audio_data = load_audio(audio_path, self.preprocessor_config.sample_rate, dtype=dtype)
+        audio_data = load_audio(
+            audio_path, self.preprocessor_config.sample_rate, dtype=dtype
+        )
 
         if chunk_duration is None:
             mel = log_mel_spectrogram(audio_data, self.preprocessor_config)
@@ -157,7 +166,6 @@ class Model(nn.Module):
 
             chunk_audio = audio_data[start:end]
             chunk_mel = log_mel_spectrogram(chunk_audio, self.preprocessor_config)
-
 
             chunk_result = self.decode(chunk_mel)[0]
 
@@ -219,19 +227,17 @@ class Model(nn.Module):
         return model
 
     @classmethod
-    def from_pretrained(
-        cls,
-        path_or_hf_repo: str,
-        *,
-        dtype: mx.Dtype = mx.bfloat16
-    ):
+    def from_pretrained(cls, path_or_hf_repo: str, *, dtype: mx.Dtype = mx.bfloat16):
         """Loads model from Hugging Face or local directory"""
         import json
+
         from huggingface_hub import hf_hub_download
         from mlx.utils import tree_flatten, tree_unflatten
 
         try:
-            config = json.load(open(hf_hub_download(path_or_hf_repo, "config.json"), "r"))
+            config = json.load(
+                open(hf_hub_download(path_or_hf_repo, "config.json"), "r")
+            )
             weight = hf_hub_download(path_or_hf_repo, "model.safetensors")
         except Exception:
             config = json.load(open(Path(path_or_hf_repo) / "config.json", "r"))

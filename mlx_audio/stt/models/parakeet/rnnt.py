@@ -98,9 +98,11 @@ class PredictNetwork(nn.Module):
             ),
             "dec_rnn": LSTM(
                 args.prednet.pred_hidden,
-                args.prednet.rnn_hidden_size
-                if args.prednet.rnn_hidden_size
-                else args.prednet.pred_hidden,
+                (
+                    args.prednet.rnn_hidden_size
+                    if args.prednet.rnn_hidden_size
+                    else args.prednet.pred_hidden
+                ),
                 args.prednet.pred_rnn_layers,
             ),
         }
