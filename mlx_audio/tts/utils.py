@@ -135,31 +135,6 @@ def get_model_and_args(model_type: str, model_name: List[str]):
     return arch, model_type
 
 
-def load_config(model_path: Union[str, Path], **kwargs) -> dict:
-    """Load model configuration from a path or Hugging Face repo.
-
-    Args:
-        model_path: Local path or Hugging Face repo ID to load config from
-        **kwargs: Additional keyword arguments to pass to the config loader
-
-    Returns:
-        dict: Model configuration
-
-    Raises:
-        FileNotFoundError: If config.json is not found at the path
-    """
-    if isinstance(model_path, str):
-        model_path = get_model_path(model_path)
-
-    try:
-        return AutoConfig.from_pretrained(model_path, **kwargs).to_dict()
-    except ValueError:
-        try:
-            with open(model_path / "config.json", encoding="utf-8") as f:
-                return json.load(f)
-        except FileNotFoundError as exc:
-            raise FileNotFoundError(f"Config not found at {model_path}") from exc
-
 
 def load_model(
     model_path: Path, lazy: bool = False, strict: bool = True, **kwargs
