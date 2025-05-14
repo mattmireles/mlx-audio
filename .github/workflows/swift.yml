@@ -14,9 +14,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode version 
+      - name: Select Xcode version
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest'
       - name: Build and Run tests
-        run: cd mlx_audio_swift/tts && xcodebuild test -scheme MLXSwiftTTS -destination 'platform=macOS'
+        run: cd mlx_audio_swift/tts && xcodebuild test -scheme Swift-TTS -destination 'platform=macOS'

@@ -27,7 +27,7 @@ let package = Package(
             path: "Swift-TTS",
             exclude: ["Preview Content","Assets.xcassets","Swift_TTSApp.swift","Swift_TTS.entitlements"]),
         .testTarget(
-            name: "Swift-TTS-Tests",
+            name: "Tests",
             dependencies: ["Swift-TTS"]),
     ]
 )
