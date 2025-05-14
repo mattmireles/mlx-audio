@@ -19,4 +19,4 @@ jobs:
         with:
           xcode-version: 'latest'
       - name: Build and Run tests
-        run: cd mlx_audio_swift/tts && xcodebuild test -scheme Swift-TTS -destination 'platform=macOS'
+        run: cd mlx_audio_swift/tts && xcodebuild test -scheme Swift-TTS -destination 'platform=macOS' MACOSX_DEPLOYMENT_TARGET=15.0
