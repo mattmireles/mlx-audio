@@ -28,6 +28,6 @@ let package = Package(
             exclude: ["Preview Content","Assets.xcassets","Swift_TTSApp.swift","Swift_TTS.entitlements"]),
         .testTarget(
             name: "Tests",
-            dependencies: ["Swift-TTS"]),
+            dependencies: ["Swift-TTS-Tests"]),
     ]
 )
