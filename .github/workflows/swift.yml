@@ -15,6 +15,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: cd mlx_audio_swift && swift build -v
+      run: cd mlx_audio_swift/tts && swift build -v
     - name: Run tests
-      run: cd mlx_audio_swift && swift test -v
+      run: cd mlx_audio_swift/tts && swift test -v
