@@ -18,5 +18,7 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest'
+      - name: Clean build folder
+        run: cd mlx_audio_swift/tts && xcodebuild clean -scheme Swift-TTS # <-- Add this clean step
       - name: Build and Run tests
         run: cd mlx_audio_swift/tts && xcodebuild test -scheme Swift-TTS -destination 'platform=macOS' MACOSX_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO
