@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		18D7A7B02DCD8365005776E9 /* 4e9ecdf03b8b6cf906070390237feda473dc13327cb8d56a43deaa374c02acd8.safetensors in Resources */ = {isa = PBXBuildFile; fileRef = 18D7A7AF2DCD8365005776E9 /* 4e9ecdf03b8b6cf906070390237feda473dc13327cb8d56a43deaa374c02acd8.safetensors */; };
 		18D7A7B32DCDAB75005776E9 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 18D7A7B22DCDAB75005776E9 /* MLX */; };
 		18D7A7B52DCDAB75005776E9 /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 18D7A7B42DCDAB75005776E9 /* MLXFFT */; };
 		18D7A7B72DCDAB75005776E9 /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 18D7A7B62DCDAB75005776E9 /* MLXFast */; };
@@ -89,9 +88,9 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		2648361A2DAD10AA004DA2A4 /* Swift-TTS-Tests */ = {
+		2648361A2DAD10AA004DA2A4 /* Tests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Swift-TTS-Tests";
+			path = Tests;
 			sourceTree = "<group>";
 		};
 		26942CF82DABD3B400B82507 /* Swift-TTS */ = {
@@ -141,7 +140,7 @@
 			children = (
 				261E20852DAC2726000711D0 /* readme.md */,
 				26942CF82DABD3B400B82507 /* Swift-TTS */,
-				2648361A2DAD10AA004DA2A4 /* Swift-TTS-Tests */,
+				2648361A2DAD10AA004DA2A4 /* Tests */,
 				264836262DAD1252004DA2A4 /* Frameworks */,
 				26942CF72DABD3B400B82507 /* Products */,
 			);
@@ -174,7 +173,7 @@
 				2648361E2DAD10AA004DA2A4 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				2648361A2DAD10AA004DA2A4 /* Swift-TTS-Tests */,
+				2648361A2DAD10AA004DA2A4 /* Tests */,
 			);
 			name = "Swift-TTS-Tests";
 			packageProductDependencies = (
