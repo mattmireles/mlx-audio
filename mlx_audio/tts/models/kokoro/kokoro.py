@@ -277,6 +277,8 @@ class Model(nn.Module):
     ):
         pipeline = self._get_pipeline(lang_code)
 
+        pipeline.voices = {}  # Reset voices
+
         if voice is None:
             voice = "af_heart"
 
