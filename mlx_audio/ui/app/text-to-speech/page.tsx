@@ -51,13 +51,14 @@ function RangeInput({
 export default function SpeechSynthesis() {
   const [text, setText] = useState("But I also have other interests, such as playing tic-tac-toe.")
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [pitch, setPitch] = useState(0)
   const [volume, setVolume] = useState(1)
   const [currentTime, setCurrentTime] = useState("00:00")
   const [duration, setDuration] = useState("00:04")
   const [activeTab, setActiveTab] = useState<"settings" | "history">("settings")
-  const [model, setModel] = useState("Kokoro")
+  const [model, setModel] = useState("prince-canuma/Spark-TTS-0.5B")
   const [language, setLanguage] = useState("English-detected")
   const [liked, setLiked] = useState<boolean | null>(null)
   const [selectedVoice, setSelectedVoice] = useState("Trustworthy Man")
@@ -69,40 +70,76 @@ export default function SpeechSynthesis() {
   }
 
   const handlePlayPause = () => {
-    setIsPlaying(!isPlaying)
-
-    if (!isPlaying) {
-      // Simulate playback progress
-      const interval = setInterval(() => {
-        setCurrentTime((prev) => {
-          const currentSeconds = Number.parseInt(prev.split(":")[1])
-          const durationSeconds = Number.parseInt(duration.split(":")[1])
-
-          if (currentSeconds >= durationSeconds) {
-            clearInterval(interval)
-            setIsPlaying(false)
-            return "00:00"
-          }
-
-          return formatTime(currentSeconds + 1)
-        })
-      }, 1000)
-
-      // Store the interval ID in a ref to clear it later
-      if (audioRef.current) {
-        ;(audioRef.current as any).intervalId = interval
-      }
-    } else {
-      // Clear the interval when paused
-      if (audioRef.current && (audioRef.current as any).intervalId) {
-        clearInterval((audioRef.current as any).intervalId)
-      }
+    if (!audioRef.current || !audioRef.current.src || audioRef.current.src === window.location.href) {
+      // If no audio is loaded, or src is not a valid audio source, try to generate first.
+      // This can happen if the user clicks play before generating or after an error.
+      handleGenerate()
+      return
     }
+
+    if (isPlaying) {
+      audioRef.current?.pause()
+    } else {
+      audioRef.current?.play()
+    }
+    setIsPlaying(!isPlaying)
   }
 
-  const handleRegenerate = () => {
-    // In a real app, this would trigger regeneration of the speech
-    alert("Regenerating speech...")
+  const handleGenerate = async () => {
+    if (!audioRef.current) return
+    setIsGenerating(true)
+
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
+    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
+
+    try {
+      const response = await fetch(`${API_BASE_URL}:${API_PORT}/v1/audio/speech`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: model, // Or the specific model identifier if different
+          input: text,
+          voice: selectedVoice,
+          speed: speed,
+          // pitch and other parameters can be added here if supported by the backend
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const blob = await response.blob()
+      const audioUrl = URL.createObjectURL(blob)
+      audioRef.current.src = audioUrl
+
+      audioRef.current.onloadedmetadata = () => {
+        setDuration(formatTime(Math.floor(audioRef.current?.duration || 0)))
+        setCurrentTime("00:00")
+        setIsPlaying(true)
+        audioRef.current?.play()
+      }
+
+      audioRef.current.ontimeupdate = () => {
+        setCurrentTime(formatTime(Math.floor(audioRef.current?.currentTime || 0)))
+      }
+
+      audioRef.current.onended = () => {
+        setIsPlaying(false)
+        setCurrentTime("00:00")
+         // Revoke the object URL to free up resources
+        if (audioRef.current?.src.startsWith("blob:")) {
+          URL.revokeObjectURL(audioRef.current.src)
+        }
+      }
+    } catch (error) {
+      console.error("Error generating speech:", error)
+      // Handle error appropriately in the UI
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const handleDownload = () => {
@@ -165,11 +202,21 @@ export default function SpeechSynthesis() {
             </div>
             <div className="flex items-center space-x-2">
               <button
-                className="rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700"
-                onClick={handleRegenerate}
+                className={`rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700 ${isGenerating ? "animate-pulse" : ""}`}
+                onClick={handleGenerate}
+                disabled={isGenerating}
               >
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Regenerate
+                {isGenerating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    Generate
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -212,34 +259,7 @@ export default function SpeechSynthesis() {
                 </div>
               </div>
 
-              {/* Using the common VoiceSelection component */}
-              <VoiceSelection onVoiceChange={handleVoiceChange} initialVoice={selectedVoice} />
 
-              <div className="mb-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm">Voice Modifier</span>
-                </div>
-                <button className="flex w-full items-center justify-between rounded-md border border-gray-200 dark:border-gray-700 p-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <span>Select a modifier</span>
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="mb-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm">Emotion</span>
-                </div>
-                <div className="relative">
-                  <select className="w-full appearance-none rounded-md border border-gray-200 dark:border-gray-700 px-3 py-2 pr-8 text-sm bg-white dark:bg-gray-800">
-                    <option>Auto</option>
-                    <option>Happy</option>
-                    <option>Sad</option>
-                    <option>Angry</option>
-                    <option>Excited</option>
-                  </select>
-                  <ChevronDown className="absolute right-2 top-2.5 h-4 w-4 pointer-events-none" />
-                </div>
-              </div>
 
               <div className="mb-6">
                 <div className="mb-2 flex items-center justify-between">
@@ -418,19 +438,20 @@ export default function SpeechSynthesis() {
               <div
                 className="flex-1 bg-gray-200 dark:bg-gray-700 h-1 rounded-full cursor-pointer relative"
                 onClick={(e) => {
+                  if (!audioRef.current || !audioRef.current.duration) return
                   const bar = e.currentTarget
                   const rect = bar.getBoundingClientRect()
                   const position = (e.clientX - rect.left) / rect.width
-                  // In a real app, this would seek to the position
-                  setCurrentTime(formatTime(Math.floor(position * 4))) // Assuming 4 seconds total
+                  audioRef.current.currentTime = position * audioRef.current.duration
+                  setCurrentTime(formatTime(Math.floor(audioRef.current.currentTime)))
                 }}
               >
                 <div
                   className="bg-black dark:bg-white h-1 rounded-full absolute top-0 left-0"
                   style={{
-                    width: isPlaying
-                      ? `${(currentTime === "00:00" ? 0 : Number.parseInt(currentTime.split(":")[1]) / Number.parseInt(duration.split(":")[1])) * 100}%`
-                      : `${(currentTime === "00:00" ? 0 : Number.parseInt(currentTime.split(":")[1]) / Number.parseInt(duration.split(":")[1])) * 100}%`,
+                    width: audioRef.current?.duration
+                      ? `${(audioRef.current.currentTime / audioRef.current.duration) * 100}%`
+                      : "0%",
                   }}
                 ></div>
               </div>
