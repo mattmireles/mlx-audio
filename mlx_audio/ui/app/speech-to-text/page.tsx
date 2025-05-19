@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 import { FileText, Upload, MoreVertical, X, ChevronDown } from "lucide-react"
 import Link from "next/link"
@@ -11,10 +11,8 @@ interface TranscriptionFile {
   id: string
   name: string
   status: "uploading" | "processing" | "completed" | "failed"
-  progress?: number
   result?: string
 }
-
 export default function SpeechToTextPage() {
   const [files, setFiles] = useState<TranscriptionFile[]>([
     {
@@ -26,57 +24,101 @@ export default function SpeechToTextPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [primaryLanguage, setPrimaryLanguage] = useState("Detect")
   const [tagAudioEvents, setTagAudioEvents] = useState(false)
+  const [selectedModel, setSelectedModel] = useState("mlx-community/whisper-large-v3-turbo")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
 
+  // New state for stored transcriptions
+  const [storedTranscriptions, setStoredTranscriptions] = useState<{ id: string; data: any }[]>([])
+
+  // Function to load transcriptions from localStorage
+  const loadStoredTranscriptions = () => {
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith("mlx-audio-transcription-"))
+    const transcriptions = keys.map((key) => {
+      const dataStr = localStorage.getItem(key)
+      try {
+        const data = dataStr ? JSON.parse(dataStr) : {}
+        return {
+          id: key.replace("mlx-audio-transcription-", ""),
+          data,
+          name: data.fileName || "Unknown file",
+          status: "completed" as const
+        }
+      } catch (error) {
+        return {
+          id: key.replace("mlx-audio-transcription-", ""),
+          data: {},
+          name: "Unknown file",
+          status: "completed" as const
+        }
+      }
+    })
+
+    // Keep the default file and add stored transcriptions
+    setFiles(prev => [
+      prev[0],
+      ...transcriptions.map(t => ({
+        id: t.id,
+        name: t.name,
+        status: t.status
+      }))
+    ])
+    setStoredTranscriptions(transcriptions)
+  }
+
+  useEffect(() => {
+    loadStoredTranscriptions()
+  }, [])
+
+  const uploadAndTranscribe = async (file: File, id: string) => {
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("model", selectedModel)
+    formData.append("language", primaryLanguage === "Detect" ? "en" : primaryLanguage.toLowerCase())
+    formData.append("response_format", "verbose_json")
+    formData.append("temperature", "0")
+
+    let fileName = file.name
+
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
+    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}:${API_PORT}/v1/audio/transcriptions`, {
+        method: "POST",
+        body: formData,
+      })
+      const data = await res.json()
+
+      // Save the transcription to a JSON file via API
+      data.fileName = fileName
+      localStorage.setItem(`mlx-audio-transcription-${id}`, JSON.stringify(data))
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === id ? { ...f, status: "completed", result: data.text } : f
+        )
+      )
+    } catch (err) {
+      setFiles((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, status: "failed" } : f))
+      )
+    }
+  }
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles: TranscriptionFile[] = Array.from(e.target.files).map((file) => ({
+      const newEntries: TranscriptionFile[] = Array.from(e.target.files).map((file) => ({
         id: Math.random().toString(36).substring(2, 9),
         name: file.name,
         status: "uploading",
-        progress: 0,
       }))
 
-      setFiles([...files, ...newFiles])
+      setFiles([...files, ...newEntries])
       setIsModalOpen(false)
 
-      // Simulate upload progress and processing
-      newFiles.forEach((file) => {
-        const uploadInterval = setInterval(() => {
-          setFiles((prevFiles) => {
-            const fileIndex = prevFiles.findIndex((f) => f.id === file.id)
-            if (fileIndex === -1) return prevFiles
-
-            const updatedFile = { ...prevFiles[fileIndex] }
-            if (updatedFile.status === "uploading") {
-              updatedFile.progress = (updatedFile.progress || 0) + 10
-              if (updatedFile.progress >= 100) {
-                updatedFile.status = "processing"
-                clearInterval(uploadInterval)
-
-                // Simulate processing completion after 2 seconds
-                setTimeout(() => {
-                  setFiles((prevFiles) => {
-                    const fileIndex = prevFiles.findIndex((f) => f.id === file.id)
-                    if (fileIndex === -1) return prevFiles
-
-                    const updatedFiles = [...prevFiles]
-                    updatedFiles[fileIndex] = {
-                      ...updatedFiles[fileIndex],
-                      status: "completed",
-                    }
-                    return updatedFiles
-                  })
-                }, 2000)
-              }
-            }
-
-            const updatedFiles = [...prevFiles]
-            updatedFiles[fileIndex] = updatedFile
-            return updatedFiles
-          })
-        }, 300)
+      newEntries.forEach((entry, idx) => {
+        const file = e.target.files![idx]
+        uploadAndTranscribe(file, entry.id)
       })
     }
   }
@@ -96,58 +138,25 @@ export default function SpeechToTextPage() {
     setIsDragging(false)
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const newFiles: TranscriptionFile[] = Array.from(e.dataTransfer.files).map((file) => ({
+      const newEntries: TranscriptionFile[] = Array.from(e.dataTransfer.files).map((file) => ({
         id: Math.random().toString(36).substring(2, 9),
         name: file.name,
         status: "uploading",
-        progress: 0,
       }))
 
-      setFiles([...files, ...newFiles])
+      setFiles([...files, ...newEntries])
       setIsModalOpen(false)
 
-      // Simulate upload progress and processing (same as above)
-      newFiles.forEach((file) => {
-        const uploadInterval = setInterval(() => {
-          setFiles((prevFiles) => {
-            const fileIndex = prevFiles.findIndex((f) => f.id === file.id)
-            if (fileIndex === -1) return prevFiles
-
-            const updatedFile = { ...prevFiles[fileIndex] }
-            if (updatedFile.status === "uploading") {
-              updatedFile.progress = (updatedFile.progress || 0) + 10
-              if (updatedFile.progress >= 100) {
-                updatedFile.status = "processing"
-                clearInterval(uploadInterval)
-
-                // Simulate processing completion after 2 seconds
-                setTimeout(() => {
-                  setFiles((prevFiles) => {
-                    const fileIndex = prevFiles.findIndex((f) => f.id === file.id)
-                    if (fileIndex === -1) return prevFiles
-
-                    const updatedFiles = [...prevFiles]
-                    updatedFiles[fileIndex] = {
-                      ...updatedFiles[fileIndex],
-                      status: "completed",
-                    }
-                    return updatedFiles
-                  })
-                }, 2000)
-              }
-            }
-
-            const updatedFiles = [...prevFiles]
-            updatedFiles[fileIndex] = updatedFile
-            return updatedFiles
-          })
-        }, 300)
+      newEntries.forEach((entry, idx) => {
+        const file = e.dataTransfer.files[idx]
+        uploadAndTranscribe(file, entry.id)
       })
     }
   }
 
   const deleteFile = (id: string) => {
     setFiles(files.filter((file) => file.id !== id))
+    localStorage.removeItem(`mlx-audio-transcription-${id}`)
   }
 
   return (
@@ -188,15 +197,7 @@ export default function SpeechToTextPage() {
                     <div>
                       <h3 className="font-medium">{file.name}</h3>
                       {file.status === "uploading" && (
-                        <div className="mt-1">
-                          <div className="h-1.5 w-48 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-sky-500 rounded-full"
-                              style={{ width: `${file.progress}%` }}
-                            ></div>
-                          </div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Uploading... {file.progress}%</p>
-                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Uploading...</p>
                       )}
                       {file.status === "processing" && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Processing...</p>
@@ -219,7 +220,7 @@ export default function SpeechToTextPage() {
                       <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
                         <MoreVertical className="h-5 w-5 text-gray-500 dark:text-gray-400" />
                       </button>
-                      <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 hidden group-hover:block z-10">
+                      <div className="absolute right-0 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 hidden group-hover:block z-10">
                         <div className="py-1">
                           {file.status === "completed" && (
                             <>
@@ -327,6 +328,19 @@ export default function SpeechToTextPage() {
                 </select>
                 <ChevronDown className="absolute right-3 top-3 h-5 w-5 text-gray-400 pointer-events-none" />
               </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium">Model</label>
+              </div>
+              <input
+                type="text"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                placeholder="Enter model name"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2.5 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
             </div>
 
             <div className="mb-6">
