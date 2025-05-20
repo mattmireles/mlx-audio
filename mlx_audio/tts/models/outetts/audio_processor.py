@@ -239,7 +239,7 @@ class AudioProcessor:
 
         seconds = audio.flatten().shape[0] / self.audio_codec.sr
         if seconds > 20:
-            raise ValueError(
+            print(
                 "Speaker audio is longer than 20 seconds. Use a shorter clip for best results."
             )
         if seconds > 15:
