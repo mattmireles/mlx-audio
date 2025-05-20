@@ -224,9 +224,11 @@ class AudioProcessor:
         audio: Union[str, mx.array],
         whisper_model: str = "mlx-community/whisper-large-v3-turbo",
     ):
-        audio = "/Users/prince_canuma/shoutout_000.mp3"
         if isinstance(audio, str):
             audio = self.audio_codec.load_audio(audio)
+
+        else:
+            audio = audio[None, None, ...]
 
         seconds = audio.flatten().shape[0] / self.audio_codec.sr
         if seconds > 20:
@@ -242,14 +244,12 @@ class AudioProcessor:
         whisper_model = load_model(whisper_model)
 
         # transcribe audio
-        data = whisper_model.generate(audio)
+        data = whisper_model.generate(audio.flatten(), word_timestamps=True)
         data = asdict(data)
 
-        print("Data", json.dumps(data, indent=4))
-
-        # # clear memory
-        # del whisper_model
-        # mx.clear_cache()
+        # clear memory
+        del whisper_model
+        mx.clear_cache()
 
         text = PromptProcessor.text_normalizations(data["text"])
         words = []
@@ -275,8 +275,6 @@ class AudioProcessor:
 
             audio = io.BytesIO(audio)
             audio = self.audio_codec.load_audio(audio)
-        else:
-            audio = audio[None, :]
 
         full_codes = self.audio_codec.encode(audio, verbose=True).tolist()[0]
 
