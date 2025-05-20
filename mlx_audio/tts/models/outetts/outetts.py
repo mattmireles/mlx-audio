@@ -115,7 +115,6 @@ class Model(nn.Module):
         max_tokens: int = 1200,
         verbose: bool = False,
         ref_audio: Optional[str] = None,
-        ref_audio: Optional[str] = None,
         **kwargs,
     ):
 
@@ -123,9 +122,7 @@ class Model(nn.Module):
 
         self.prompt_processor = PromptProcessor(self.tokenizer)
         self.audio_processor = AudioProcessor()
-        self.audio_processor = AudioProcessor()
 
-        speaker = self.get_speaker(voice, ref_audio)
         speaker = self.get_speaker(voice, ref_audio)
 
         sampler = make_sampler(
