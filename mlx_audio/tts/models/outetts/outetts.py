@@ -1,5 +1,6 @@
 import json
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -18,6 +19,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from ..base import GenerationResult
+from .audio_processor import AudioProcessor
 from .dac_interface import DacInterface
 from .prompt_processor import PromptProcessor
 
@@ -80,15 +82,23 @@ class Model(nn.Module):
     ):
         prompt = text.replace("\\n", "\n").replace("\\t", "\t")
         prompts = prompt.split(split_pattern)
+        ref_audio = kwargs.get("ref_audio", None)
 
         self.prompt_processor = PromptProcessor(self.tokenizer)
-        self.audio_codec = DacInterface()
+        self.audio_processor = AudioProcessor()
 
         if voice is None:
             voice = f"{Path(__file__).parent}/default_speaker.json"
 
-        with open(voice, "r") as f:
-            speaker = json.load(f)
+        if ref_audio is None:
+            speaker = self.audio_processor.load_speaker(voice)
+        else:
+            speaker = self.audio_processor.create_speaker_from_whisper(ref_audio)
+            print(json.dumps(speaker, indent=4))
+            file_id = str(uuid.uuid4())
+            self.audio_processor.save_speaker(
+                speaker, f"~/.cache/mlx_audio/voices/outetts_{file_id}.json"
+            )
 
         sampler = make_sampler(
             temperature,
@@ -134,7 +144,9 @@ class Model(nn.Module):
 
             output_ids = input_ids[:, input_length:].tolist()[0]
             output = self.prompt_processor.extract_audio_from_tokens(output_ids)
-            audio = self.audio_codec.decode(mx.array([output])).squeeze(0)
+            audio = self.audio_processor.audio_codec.decode(mx.array([output])).squeeze(
+                0
+            )
             all_audio.append(audio)
 
         time_end = time.time()
