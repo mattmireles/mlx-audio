@@ -322,6 +322,8 @@ class AudioProcessor:
         return {"text": text, "words": word_codes, "global_features": global_features}
 
     def save_speaker(self, speaker: dict, path: str):
+        # Expand ~ to home directory to save in ~/.cache/mlx_audio/voices
+        path = os.path.expanduser(path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
         with open(path, "w") as f:
@@ -330,6 +332,8 @@ class AudioProcessor:
         print(f"Speaker saved to: {path}")
 
     def load_speaker(self, path: str):
+        # Expand ~ to home directory to load from ~/.cache/mlx_audio/voices
+        path = os.path.expanduser(path)
         if not os.path.exists(path):
             raise FileNotFoundError(f"Speaker file not found: {path}")
 
