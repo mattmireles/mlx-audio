@@ -248,6 +248,7 @@ def generate_audio(
 
         # Load reference audio for voice matching if specified
         if ref_audio:
+            kwargs["raw_ref_audio"] = ref_audio  # TODO: remove this (Prince)
             if not os.path.exists(ref_audio):
                 raise FileNotFoundError(f"Reference audio file not found: {ref_audio}")
 
