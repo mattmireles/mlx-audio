@@ -221,16 +221,13 @@ class AudioProcessor:
 
     def create_speaker_from_whisper(
         self,
-        audio: Union[str, mx.array],
+        audio: str,
         whisper_model: str = "mlx-community/whisper-large-v3-turbo",
     ):
-        if isinstance(audio, str):
-            audio = self.audio_codec.load_audio(audio)
 
-        else:
-            audio = audio[None, None, ...]
-
-        seconds = audio.flatten().shape[0] / self.audio_codec.sr
+        seconds = (
+            self.audio_codec.load_audio(audio).flatten().shape[0] / self.audio_codec.sr
+        )
         if seconds > 20:
             raise ValueError(
                 "Speaker audio is longer than 20 seconds. Use a shorter clip for best results."
@@ -244,7 +241,7 @@ class AudioProcessor:
         whisper_model = load_model(whisper_model)
 
         # transcribe audio
-        data = whisper_model.generate(audio.flatten(), word_timestamps=True)
+        data = whisper_model.generate(audio, word_timestamps=True)
         data = asdict(data)
 
         # clear memory
@@ -265,16 +262,17 @@ class AudioProcessor:
                 ]
             )
 
+        with open(audio, "rb") as f:
+            audio_bytes = f.read()
+
         return self.create_speaker_from_dict(
-            {"audio": {"bytes": audio}, "text": text, "words": words}
+            {"audio": {"bytes": audio_bytes}, "text": text, "words": words}
         )
 
     def create_speaker_from_dict(self, data: dict):
         audio = data["audio"]["bytes"]
-        if not isinstance(audio, mx.array):
-
-            audio = io.BytesIO(audio)
-            audio = self.audio_codec.load_audio(audio)
+        audio = io.BytesIO(audio)
+        audio = self.audio_codec.load_audio(audio)
 
         full_codes = self.audio_codec.encode(audio, verbose=True).tolist()[0]
 
