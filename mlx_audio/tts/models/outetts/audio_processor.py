@@ -7,7 +7,8 @@ from typing import Union
 import mlx.core as mx
 import numpy as np
 
-from mlx_audio.stt.utils import load_model
+from mlx_audio.stt.utils import SAMPLE_RATE as WHISPER_SAMPLE_RATE
+from mlx_audio.stt.utils import load_model, resample_audio
 
 from .dac_interface import DacInterface
 from .prompt_processor import PromptProcessor
@@ -224,10 +225,19 @@ class AudioProcessor:
         audio: str,
         whisper_model: str = "mlx-community/whisper-large-v3-turbo",
     ):
+        if isinstance(audio, str):
+            audio = self.audio_codec.load_audio(audio)
+        else:
+            # resample audio to 16000 for whisper
+            resampled_audio = resample_audio(
+                audio[..., None], self.audio_codec.sr, WHISPER_SAMPLE_RATE
+            )
+            resampled_audio = mx.array(resampled_audio, dtype=mx.float32).mean(axis=1)
 
-        seconds = (
-            self.audio_codec.load_audio(audio).flatten().shape[0] / self.audio_codec.sr
-        )
+            # convert to 2d array
+            audio = audio[None, None, ...]
+
+        seconds = audio.flatten().shape[0] / self.audio_codec.sr
         if seconds > 20:
             raise ValueError(
                 "Speaker audio is longer than 20 seconds. Use a shorter clip for best results."
@@ -241,7 +251,7 @@ class AudioProcessor:
         whisper_model = load_model(whisper_model)
 
         # transcribe audio
-        data = whisper_model.generate(audio, word_timestamps=True)
+        data = whisper_model.generate(resampled_audio.flatten(), word_timestamps=True)
         data = asdict(data)
 
         # clear memory
@@ -262,17 +272,15 @@ class AudioProcessor:
                 ]
             )
 
-        with open(audio, "rb") as f:
-            audio_bytes = f.read()
-
         return self.create_speaker_from_dict(
-            {"audio": {"bytes": audio_bytes}, "text": text, "words": words}
+            {"audio": {"bytes": audio}, "text": text, "words": words}
         )
 
     def create_speaker_from_dict(self, data: dict):
         audio = data["audio"]["bytes"]
-        audio = io.BytesIO(audio)
-        audio = self.audio_codec.load_audio(audio)
+        if isinstance(audio, str):
+            audio = io.BytesIO(audio)
+            audio = self.audio_codec.load_audio(audio)
 
         full_codes = self.audio_codec.encode(audio, verbose=True).tolist()[0]
 

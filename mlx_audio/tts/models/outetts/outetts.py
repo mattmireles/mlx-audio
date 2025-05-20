@@ -92,13 +92,11 @@ class Model(nn.Module):
         split_pattern: str = "\n",
         max_tokens: int = 1200,
         verbose: bool = False,
+        ref_audio: Optional[str] = None,
         **kwargs,
     ):
         prompt = text.replace("\\n", "\n").replace("\\t", "\t")
         prompts = prompt.split(split_pattern)
-        ref_audio = kwargs.get(
-            "raw_ref_audio", None
-        )  # TODO: remove this and use ref_audio (Prince)
 
         self.prompt_processor = PromptProcessor(self.tokenizer)
         self.audio_processor = AudioProcessor()
