@@ -84,9 +84,7 @@ class Model(nn.Module):
         self.audio_processor.save_speaker(speaker, save_path)
         return speaker
 
-    def chunk_text(
-        self, text: str, min_words: int = 10, max_words: int = 30
-    ) -> List[str]:
+    def chunk_text(self, text: str, max_words: int = 30) -> List[str]:
         sentences = re.split(r"[.!?。！？︕︖]+", text)
         sentences = [s.strip() for s in sentences if s.strip()]
         chunks = []
