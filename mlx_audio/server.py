@@ -7,19 +7,17 @@ It offers an OpenAI-compatible API for Audio completions and model management.
 
 import argparse
 import asyncio
-import importlib
 import io
 import os
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
 import soundfile as sf
+import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from mlx_audio.utils import load_model
@@ -51,6 +49,26 @@ class ModelProvider:
 
 
 app = FastAPI()
+
+
+def int_or_float(value):
+
+    try:
+        return int(value)
+    except ValueError:
+        try:
+            return float(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{value} is not an int or float")
+
+
+def calculate_default_workers(workers: int = 2) -> int:
+    if num_workers_env := os.getenv("MLX_AUDIO_NUM_WORKERS"):
+        try:
+            workers = int(num_workers_env)
+        except ValueError:
+            workers = max(1, int(os.cpu_count() * float(num_workers_env)))
+    return workers
 
 
 # Add CORS middleware
@@ -215,3 +233,62 @@ async def stt_transcriptions(
     result = stt_model.generate(tmp_path)
     os.remove(tmp_path)
     return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description="MLX Audio API server")
+    parser.add_argument(
+        "--allowed-origins",
+        nargs="+",
+        default=["*"],
+        help="List of allowed origins for CORS",
+    )
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host to run the server on"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port to run the server on"
+    )
+    parser.add_argument(
+        "--reload",
+        type=bool,
+        default=False,
+        help="Enable auto-reload of the server. Only works when 'workers' is set to None.",
+    )
+
+    parser.add_argument(
+        "--workers",
+        type=int_or_float,
+        default=calculate_default_workers(),
+        help="""Number of workers. Overrides the `MLX_AUDIO_NUM_WORKERS` env variable.
+        Can be either an int or a float.
+        If an int, it will be the number of workers to use.
+        If a float, number of workers will be this fraction of the  number of CPU cores available, with a minimum of 1.
+        Defaults to the `MLX_AUDIO_NUM_WORKERS` env variable if set and to 2 if not.
+        To use all available CPU cores, set it to 1.0.
+
+        Examples:
+        --workers 1 (will use 1 worker)
+        --workers 1.0 (will use all available CPU cores)
+        --workers 0.5 (will use half the number of CPU cores available)
+        --workers 0.0 (will use 1 worker)""",
+    )
+
+    args = parser.parse_args()
+    if isinstance(args.workers, float):
+        args.workers = max(1, int(os.cpu_count() * args.workers))
+
+    setup_cors(app, args.allowed_origins)
+
+    uvicorn.run(
+        "mlx_audio.server:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        workers=args.workers,
+        loop="asyncio",
+    )
+
+
+if __name__ == "__main__":
+    main()
