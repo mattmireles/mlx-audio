@@ -1,10 +1,29 @@
+import glob
+import json
 import math
-from typing import Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
 
 import mlx.core as mx
 import mlx.nn as nn
+import numpy as np
+from mlx_lm.generate import generate_step
+from mlx_lm.models.cache import KVCache
+from mlx_lm.models.llama import LlamaModel
+from mlx_lm.sample_utils import make_sampler
+from transformers import AutoProcessor
+
+from mlx_audio.stt.generate import wired_limit
+from mlx_audio.stt.utils import get_model_path
 
 from .config import AudioConfig, ModelConfig, TextConfig
+
+
+@dataclass
+class STTOutput:
+    text: str
+    segments: List[dict] = None
+    language: str = None
 
 
 class Attention(nn.Module):
@@ -26,15 +45,15 @@ class Attention(nn.Module):
             )
         self.scaling = self.head_dim**-0.5
 
+        self.q_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=True)
         self.k_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.v_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.q_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
-        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
+        self.v_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=True)
+        self.out_proj = nn.Linear(self.embed_dim, self.embed_dim, bias=True)
 
     def __call__(
         self,
         x: mx.array,
-        attention_mask: Optional[mx.array] = None,
+        mask: Optional[mx.array] = None,
     ) -> Tuple[mx.array, Optional[mx.array]]:
         bsz, tgt_len, _ = x.shape
 
@@ -53,7 +72,7 @@ class Attention(nn.Module):
         ).transpose(0, 2, 1, 3)
 
         attn_output = mx.fast.scaled_dot_product_attention(
-            query_states, key_states, value_states, scale=1.0, mask=attention_mask
+            query_states, key_states, value_states, scale=1.0, mask=mask
         )
 
         attn_output = attn_output.transpose(0, 2, 1, 3).reshape(
@@ -126,7 +145,6 @@ class Encoder(nn.Module):
         x = nn.gelu(self.conv1(x))
         x = nn.gelu(self.conv2(x))
 
-        x = x.transpose(0, 2, 1)
         embed_pos = self.embed_positions.weight
 
         x = (x + embed_pos).astype(x.dtype)
@@ -156,16 +174,47 @@ class MultiModalProjector(nn.Module):
         return hidden_states
 
 
+class LanguageModel(nn.Module):
+    def __init__(self, config: ModelConfig):
+        super().__init__()
+        self.config = config
+        self.model_type = config.model_type
+        self.model = LlamaModel(config)
+
+        if not config.tie_word_embeddings:
+            self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+    def __call__(
+        self,
+        inputs: Optional[mx.array] = None,
+        mask: Optional[mx.array] = None,
+        cache: Optional[mx.array] = None,
+        input_embeddings: Optional[mx.array] = None,
+    ):
+        out = self.model(
+            inputs, mask=mask, cache=cache, input_embeddings=input_embeddings
+        )
+        if self.config.tie_word_embeddings:
+            out = self.model.embed_tokens.as_linear(out)
+        else:
+            out = self.lm_head(out)
+        return out
+
+    @property
+    def layers(self):
+        return self.model.layers
+
+
 class Model(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.config = config
         self.vocab_size = config.text_config.vocab_size
 
+        self.language_model = LanguageModel(config.text_config)
+
         self.audio_tower = Encoder(config.audio_config)
         self.multi_modal_projector = MultiModalProjector(config)
-        self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
     def get_audio_embeds(self, x: mx.array) -> mx.array:
         audio_embeds = self.audio_tower(x).reshape(
@@ -174,35 +223,86 @@ class Model(nn.Module):
         audio_embeds = self.multi_modal_projector(audio_embeds)
         return audio_embeds
 
-    def __call__(
+    def _merge_input_embeddings(
         self,
         input_ids: mx.array,
         input_features: mx.array,
+        cache: Optional[mx.array] = None,
     ) -> mx.array:
-
         if input_ids is not None:
-            inputs_embeds = self.embed_tokens(input_ids)
+            inputs_embeds = self.language_model.model.embed_tokens(input_ids)
         else:
             inputs_embeds = None
 
-        if input_features is not None:
+        if input_features is not None and (cache is None or cache[0].offset == 0):
             audio_embeds = self.get_audio_embeds(input_features)
 
             if inputs_embeds is not None:
                 # Replace audio token placeholders with audio embeddings
                 audio_token_mask = input_ids == self.config.audio_token_id
-                inputs_embeds = mx.where(
-                    audio_token_mask[..., None], audio_embeds, inputs_embeds
+                # Expand audio_token_mask to match inputs_embeds shape
+                audio_token_mask_expanded = audio_token_mask[..., None]
+                audio_token_mask_expanded = mx.broadcast_to(
+                    audio_token_mask_expanded, inputs_embeds.shape
                 )
+                # Expand audio_embeds to match the number of audio tokens
+                audio_token_positions = np.where(audio_token_mask.flatten())[0].tolist()
+                inputs_embeds_flat = inputs_embeds.reshape(-1, inputs_embeds.shape[-1])
+                inputs_embeds_flat[audio_token_positions] = audio_embeds
+                inputs_embeds = inputs_embeds_flat.reshape(inputs_embeds.shape)
             else:
                 inputs_embeds = audio_embeds
 
-        logits = self.lm_head(inputs_embeds)
+        return inputs_embeds
+
+    def __call__(
+        self,
+        input_ids: mx.array,
+        input_features: mx.array = None,
+        mask: Optional[mx.array] = None,
+        cache: Optional[mx.array] = None,
+    ) -> mx.array:
+
+        inputs_embeds = self._merge_input_embeddings(
+            input_ids=input_ids,
+            input_features=input_features,
+            cache=cache,
+        )
+
+        logits = self.language_model(
+            inputs_embeds=inputs_embeds, mask=mask, cache=cache
+        )
 
         return logits
 
+    def sanitize(self, weights):
+        sanitized_weights = {}
+        for k, v in weights.items():
+            if "conv" in k and "weight" in k:
+                if v.shape[-1] < v.shape[-2]:
+                    sanitized_weights[k] = v.transpose(0, 2, 1)
+                else:
+                    sanitized_weights[k] = v
+            else:
+                sanitized_weights[k] = v
+        return sanitized_weights
+
     @classmethod
-    def from_pretrained(cls, model_path: str, config: Optional[ModelConfig] = None):
+    def from_pretrained(
+        cls,
+        model_path: str,
+        config: Optional[ModelConfig] = None,
+        lazy: bool = False,
+        **kwargs,
+    ):
+        processor = AutoProcessor.from_pretrained(model_path)
+        model_repo = model_path
+        revision = kwargs.get("revision", None)
+        force_download = kwargs.get("force_download", False)
+        model_path = get_model_path(
+            model_path, revision=revision, force_download=force_download
+        )
+
         if config is None:
             import json
 
@@ -211,9 +311,117 @@ class Model(nn.Module):
             config = ModelConfig.from_dict(config_dict)
 
         model = cls(config)
+        model._processor = processor
+        model._processor.tokenizer.eos_token_ids = getattr(
+            model._processor.tokenizer, "eos_token_ids", [2, 4, 32000]
+        )
+        model.config.model_repo = model_repo
 
-        # Load weights
-        weights = mx.load(f"{model_path}/model.safetensors")
+        weights = {}
+        weight_files = glob.glob(str(model_path / "model-*.safetensors"))
+        for file in weight_files:
+            weights.update(mx.load(file))
+
+        weights = model.sanitize(weights)
+
         model.load_weights(list(weights.items()))
 
+        if not lazy:
+            mx.eval(model.parameters())
+
         return model
+
+    def stream_generate(
+        self,
+        input_ids: Optional[mx.array] = None,
+        *,
+        input_features: Optional[mx.array] = None,
+        max_tokens: int = 128,
+        sampler: Optional[Callable[mx.array, mx.array]] = None,
+        generation_stream: bool = False,
+    ) -> Generator[Tuple[mx.array, mx.array], None, None]:
+
+        input_embeddings = self._merge_input_embeddings(
+            input_ids=input_ids,
+            input_features=input_features,
+        )[0]
+
+        with wired_limit(self, [generation_stream]):
+            for n, (token, logprobs) in enumerate(
+                generate_step(
+                    prompt=mx.array([]),
+                    input_embeddings=input_embeddings,
+                    model=self.language_model,
+                    max_tokens=max_tokens,
+                    sampler=sampler,
+                )
+            ):
+                if token in self._processor.tokenizer.eos_token_ids:
+                    break
+
+                yield token, logprobs
+
+    def generate(
+        self,
+        audio: List[mx.array],
+        *,
+        message: Optional[List[Dict[str, Any]]] = None,
+        max_tokens: int = 128,
+        temperature: float = 0.0,
+        top_p: float = 0.95,
+        top_k: int = 0,
+        min_p: float = 0.0,
+        min_tokens_to_keep: int = 1,
+        language: str = "en",
+        verbose: bool = False,
+        generation_stream: bool = False,
+    ) -> mx.array:
+
+        if message is None:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "audio",
+                            "path": audio,
+                        },
+                    ],
+                }
+            ]
+
+        inputs = self._processor.apply_transcription_request(
+            language=language, audio=audio, model_id=self.config.model_repo
+        )
+        input_ids = mx.array(inputs["input_ids"])
+        input_features = mx.array(inputs["input_features"]).transpose(0, 2, 1)
+
+        generated = []
+
+        sampler = make_sampler(
+            temperature,
+            top_p,
+            min_p,
+            min_tokens_to_keep=min_tokens_to_keep,
+            top_k=top_k,
+            xtc_special_tokens=self._processor.tokenizer.encode("\n")
+            + list(self._processor.tokenizer.eos_token_ids),
+        )
+
+        for token, _ in self.stream_generate(
+            input_ids=input_ids,
+            input_features=input_features,
+            max_tokens=max_tokens,
+            sampler=sampler,
+            generation_stream=generation_stream,
+        ):
+            generated.append(token)
+            if verbose:
+                print(self._processor.decode([token]), end="", flush=True)
+
+        # Clear cache after each segment to avoid memory leaks
+        mx.clear_cache()
+
+        return STTOutput(
+            text=self._processor.decode(generated),
+        )

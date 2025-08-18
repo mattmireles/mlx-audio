@@ -41,6 +41,7 @@ class AudioConfig:
 
 @dataclass
 class TextConfig:
+    model_type: str = "llama"
     vocab_size: int = 131072
     max_position_embeddings: int = 131072
     hidden_size: int = 3072
@@ -62,6 +63,9 @@ class TextConfig:
     bos_token_id: int = 1
     eos_token_id: int = 2
     sliding_window: Optional[int] = None
+    rope_traditional: bool = False
+    rope_scaling: Optional[Dict[str, Any]] = None
+    rope_theta: float = 100000000.0
 
     @classmethod
     def from_dict(cls, params):
@@ -78,6 +82,7 @@ class TextConfig:
 class ModelConfig:
     audio_config: AudioConfig
     text_config: TextConfig
+    model_repo: str = None
     model_type: str = "voxtral"
     audio_token_id: int = 24
     projector_hidden_act: str = "gelu"
