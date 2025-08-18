@@ -7,11 +7,6 @@ from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
 import mlx.core as mx
 import mlx.nn as nn
 import numpy as np
-from mlx_lm.generate import generate_step
-from mlx_lm.models.cache import KVCache
-from mlx_lm.models.llama import LlamaModel
-from mlx_lm.sample_utils import make_sampler
-from transformers import AutoProcessor
 
 from mlx_audio.stt.generate import wired_limit
 from mlx_audio.stt.utils import get_model_path
@@ -179,6 +174,9 @@ class LanguageModel(nn.Module):
         super().__init__()
         self.config = config
         self.model_type = config.model_type
+
+        from mlx_lm.models.llama import LlamaModel
+
         self.model = LlamaModel(config)
 
         if not config.tie_word_embeddings:
@@ -294,6 +292,8 @@ class Model(nn.Module):
         config: Optional[ModelConfig] = None,
         **kwargs,
     ):
+        from transformers import AutoProcessor
+
         processor = AutoProcessor.from_pretrained(model_path)
         model_repo = model_path
         revision = kwargs.get("revision", None)
@@ -336,6 +336,8 @@ class Model(nn.Module):
         sampler: Optional[Callable[mx.array, mx.array]] = None,
         generation_stream: bool = False,
     ) -> Generator[Tuple[mx.array, mx.array], None, None]:
+
+        from mlx_lm.generate import generate_step
 
         input_embeddings = self._merge_input_embeddings(
             input_ids=input_ids,
@@ -393,6 +395,8 @@ class Model(nn.Module):
         input_features = mx.array(inputs["input_features"]).transpose(0, 2, 1)
 
         generated = []
+
+        from mlx_lm.sample_utils import make_sampler
 
         sampler = make_sampler(
             temperature,
