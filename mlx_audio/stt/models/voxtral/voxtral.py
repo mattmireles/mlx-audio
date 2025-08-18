@@ -292,7 +292,6 @@ class Model(nn.Module):
         cls,
         model_path: str,
         config: Optional[ModelConfig] = None,
-        lazy: bool = False,
         **kwargs,
     ):
         processor = AutoProcessor.from_pretrained(model_path)
@@ -325,9 +324,6 @@ class Model(nn.Module):
         weights = model.sanitize(weights)
 
         model.load_weights(list(weights.items()))
-
-        if not lazy:
-            mx.eval(model.parameters())
 
         return model
 
