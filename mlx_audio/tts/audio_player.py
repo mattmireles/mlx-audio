@@ -4,6 +4,8 @@ import shutil
 import subprocess
 import tempfile
 import time
+import sys
+import contextlib
 from collections import deque
 from threading import Event, Lock
 
@@ -43,6 +45,7 @@ class AudioPlayer:
 
         # Playback sample-rate may differ if we need to adapt to device
         self.playback_sample_rate: int | None = None
+        self.channels: int = 1
 
         # Fallback path state
         self._fallback_mode = False
@@ -57,7 +60,8 @@ class AudioPlayer:
             while filled < frames and self.audio_buffer:
                 buf = self.audio_buffer[0]
                 to_copy = min(frames - filled, len(buf))
-                outdata[filled : filled + to_copy, 0] = buf[:to_copy]
+                # Broadcast mono buffer to all output channels
+                outdata[filled : filled + to_copy, :self.channels] = buf[:to_copy, None]
                 filled += to_copy
 
                 if to_copy == len(buf):
@@ -90,24 +94,41 @@ class AudioPlayer:
 
         last_error: Exception | None = None
         for rate in candidate_rates:
-            try:
-                self.stream = sd.OutputStream(
-                    samplerate=rate,
-                    channels=1,
-                    callback=self.callback,
-                    blocksize=self.buffer_size,
-                    dtype='float32',
-                )
-                self.stream.start()
-                self.playing = True
-                self.drain_event.clear()
-                self.playback_sample_rate = rate
-                if rate != self.sample_rate:
-                    print(f"sounddevice: using {rate} Hz for playback (resampling from {self.sample_rate} Hz)")
-                return
-            except Exception as e:  # pragma: no cover - hardware dependent
-                last_error = e
-                continue
+            for ch in (1, 2):
+                try:
+                    # Suppress PortAudio's stderr spam while probing
+                    with self._suppress_stderr():
+                        self.stream = sd.OutputStream(
+                            samplerate=rate,
+                            channels=ch,
+                            callback=self.callback,
+                            blocksize=self.buffer_size,
+                            dtype='float32',
+                        )
+                        self.stream.start()
+                    self.playing = True
+                    self.drain_event.clear()
+                    self.playback_sample_rate = rate
+                    self.channels = ch
+                    if rate != self.sample_rate:
+                        print(f"sounddevice: using {rate} Hz for playback (resampling from {self.sample_rate} Hz)")
+                        # Resample already-buffered chunks to the device rate
+                        with self.buffer_lock:
+                            if self.audio_buffer:
+                                rebuffed = deque()
+                                while self.audio_buffer:
+                                    rebuffed.append(
+                                        self._resample_linear(self.audio_buffer.popleft(), self.sample_rate, rate)
+                                    )
+                                self.audio_buffer = rebuffed
+                        # Reset arrival rate/window in the device domain
+                        self.arrival_rate = rate
+                        self.window_sample_count = 0
+                        self.window_start = time.perf_counter()
+                    return
+                except Exception as e:  # pragma: no cover - hardware dependent
+                    last_error = e
+                    continue
 
         # If we reach here, PortAudio failed
         print(f"sounddevice OutputStream unavailable, falling back to system audio player. Reason: {last_error}")
@@ -285,3 +306,25 @@ class AudioPlayer:
                 os.remove(path)
             except Exception:
                 pass
+
+    # Redirect C-level stderr temporarily (to silence PortAudio warnings)
+    @staticmethod
+    @contextlib.contextmanager
+    def _suppress_stderr():
+        try:
+            stderr_fd = sys.stderr.fileno()
+        except Exception:
+            # If not a real file descriptor (e.g., in some environments), do nothing
+            yield
+            return
+        # Duplicate original stderr
+        with os.fdopen(os.dup(stderr_fd), 'wb') as saved_stderr:
+            with open(os.devnull, 'wb') as devnull:
+                try:
+                    os.dup2(devnull.fileno(), stderr_fd)
+                    yield
+                finally:
+                    try:
+                        os.dup2(saved_stderr.fileno(), stderr_fd)
+                    except Exception:
+                        pass
