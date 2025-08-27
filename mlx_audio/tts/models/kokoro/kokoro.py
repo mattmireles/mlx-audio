@@ -64,19 +64,40 @@ class ModelConfig(BaseModelArgs):
 
 
 class Model(nn.Module):
-    """
-    KokoroModel is a mlx.nn.Module with 2 main responsibilities:
-    1. Init weights, downloading config.json + model.pth from HF if needed
-    2. forward(phonemes: str, ref_s: FloatTensor) -> (audio: FloatTensor)
-
-    You likely only need one KokoroModel instance, and it can be reused across
-    multiple KokoroPipelines to avoid redundant memory allocation.
-
-    Unlike KokoroPipeline, KokoroModel is language-blind.
-
-    KokoroModel stores self.vocab and thus knows how to map phonemes -> input_ids,
-    so there is no need to repeatedly download config.json outside of KokoroModel.
-    """
+    # Kokoro TTS model for high-quality neural speech synthesis.
+    # 
+    # Complete implementation of the Kokoro Text-to-Speech architecture combining
+    # BERT-based text understanding, duration prediction, prosody modeling,
+    # and neural vocoding to generate natural-sounding speech from text.
+    # 
+    # The model follows an encoder-decoder architecture:
+    # 1. Text Encoding: CustomAlbert processes phonemes for linguistic understanding
+    # 2. Duration Prediction: ProsodyPredictor estimates phoneme durations
+    # 3. Alignment: Text features are aligned to audio frames using predicted durations
+    # 4. Vocoding: ISTFTNet decoder generates high-quality audio waveforms
+    # 
+    # Key Features:
+    # - Multi-speaker synthesis with voice style transfer
+    # - Phoneme-level duration and prosody control
+    # - High-quality neural vocoding with ISTFTNet
+    # - Efficient MLX implementation for Apple Silicon
+    # - Compatible with PyTorch checkpoints
+    # 
+    # Architecture Components:
+    # - CustomAlbert: BERT-based phoneme encoder
+    # - ProsodyPredictor: Duration and F0 prediction network
+    # - TextEncoder: Text-to-speech feature transformer
+    # - Decoder: ISTFTNet neural vocoder
+    # 
+    # Used by:
+    # - `KokoroPipeline` for high-level TTS interface
+    # - Voice cloning and adaptation applications
+    # - Real-time speech synthesis systems
+    # 
+    # Performance Notes:
+    # - Single model instance can be reused across multiple pipelines
+    # - Supports batched inference for efficient processing
+    # - Memory-efficient caching of pipeline instances
 
     REPO_ID = "prince-canuma/Kokoro-82M"
 
@@ -114,6 +135,19 @@ class Model(nn.Module):
 
     @dataclass
     class Output:
+        # Structured output from Kokoro TTS model inference.
+        # 
+        # Contains generated audio and optional metadata from the synthesis
+        # process, including predicted phoneme durations for analysis.
+        # 
+        # Used by:
+        # - Model forward pass when return_output=True
+        # - Duration analysis and speech timing research
+        # - Model evaluation and debugging
+        # 
+        # Attributes:
+        #     audio (mx.array): Generated audio waveform
+        #     pred_dur (Optional[mx.array]): Predicted phoneme durations
         audio: mx.array
         pred_dur: Optional[mx.array] = None
 
@@ -142,12 +176,12 @@ class Model(nn.Module):
         bert_dur, _ = self.bert(input_ids, attention_mask=(~text_mask).astype(mx.int32))
         d_en = self.bert_encoder(bert_dur).transpose(0, 2, 1)
         ref_s = ref_s
-        s = ref_s[:, 128:]
+        s = ref_s[:, STYLE_VECTOR_SPLIT_INDEX:]  # Split reference style vector
         d = self.predictor.text_encoder(d_en, s, input_lengths, text_mask)
         x, _ = self.predictor.lstm(d)
         duration = self.predictor.duration_proj(x)
         duration = mx.sigmoid(duration).sum(axis=-1) / speed
-        pred_dur = mx.clip(mx.round(duration), a_min=1, a_max=None).astype(mx.int32)[0]
+        pred_dur = mx.clip(mx.round(duration), a_min=MIN_DURATION_CLAMP, a_max=None).astype(mx.int32)[0]
         indices = mx.concatenate(
             [mx.repeat(mx.array(i), int(n)) for i, n in enumerate(pred_dur)]
         )
@@ -162,7 +196,7 @@ class Model(nn.Module):
         asr = t_en @ pred_aln_trg
 
         decoder = mx.compile(decoder) if decoder is not None else self.decoder
-        audio = decoder(asr, F0_pred, N_pred, ref_s[:, :128])[0]  # Working fine in MLX
+        audio = decoder(asr, F0_pred, N_pred, ref_s[:, :STYLE_VECTOR_SPLIT_INDEX])[0]  # Neural vocoding
 
         # Evaluate the computation graph for audio and pred_dur before returning
         mx.eval(audio, pred_dur)

@@ -1,3 +1,26 @@
+# EnCodec neural audio codec implementation for MLX.
+# 
+# This module implements the complete EnCodec architecture from Meta's
+# "High Fidelity Neural Audio Compression" paper, providing state-of-the-art
+# audio compression with perceptual quality preservation.
+# 
+# EnCodec uses a convolutional encoder-decoder architecture with residual
+# vector quantization (RVQ) for efficient audio compression at various bitrates.
+# The model supports both causal and non-causal convolutions for streaming
+# and non-streaming applications.
+# 
+# Cross-file Dependencies:
+# - Uses `mlx_audio.utils` for STFT/ISTFT and windowing functions
+# - Called by `mlx_audio.codec.tests.test_encodec` for validation
+# - Used by applications requiring high-quality audio compression
+# 
+# Key Features:
+# - Variable bitrate compression (1.5-24 kbps)
+# - Streaming and non-streaming modes
+# - Perceptual loss optimization
+# - Residual vector quantization
+# - Custom MLX LSTM implementation with Metal kernels
+
 import functools
 import json
 import math
@@ -11,36 +34,103 @@ import mlx.nn as nn
 import numpy as np
 from huggingface_hub import snapshot_download
 
+# EnCodec model constants
+DEFAULT_SAMPLING_RATE = 24000        # Standard sampling rate for EnCodec
+DEFAULT_NUM_FILTERS = 32             # Base number of filters in conv layers
+DEFAULT_KERNEL_SIZE = 7              # Default convolutional kernel size
+DEFAULT_CODEBOOK_SIZE = 1024         # Vector quantization codebook size
+DEFAULT_CODEBOOK_DIM = 128           # Dimension of each codebook vector
+DEFAULT_HIDDEN_SIZE = 128            # Hidden dimension for LSTM layers
+DEFAULT_NUM_LSTM_LAYERS = 2          # Number of LSTM layers in bottleneck
+RESIDUAL_KERNEL_SIZE = 3             # Kernel size for residual connections
+DEFAULT_DILATION_GROWTH_RATE = 2     # Growth rate for dilated convolutions
+DEFAULT_COMPRESSION_FACTOR = 2       # Default temporal compression ratio
+LAST_KERNEL_SIZE = 7                 # Final layer kernel size
+TRIM_RIGHT_RATIO = 1.0               # Right padding trim ratio for causal mode
+
+# LSTM Metal kernel constants
+LSTM_GATE_COUNT = 4                  # Number of LSTM gates (i, f, g, o)
+LSTM_THREADGROUP_SIZE = 256          # Metal threadgroup size for LSTM kernel
+
 
 def filter_dataclass_fields(data_dict, dataclass_type):
-    """Filter a dictionary to only include keys that are fields in the dataclass."""
+    # Filters dictionary to only include valid dataclass fields.
+    # 
+    # Helper function for safe dataclass instantiation from potentially
+    # untrusted configuration dictionaries. Only includes keys that match
+    # actual dataclass field names, preventing errors from extra keys.
+    # 
+    # Called by:
+    # - Model loading functions when parsing configuration files
+    # - Configuration validation and sanitization
+    # 
+    # Args:
+    #     data_dict (dict): Input dictionary with potential extra keys
+    #     dataclass_type: Dataclass type to validate against
+    # 
+    # Returns:
+    #     dict: Filtered dictionary with only valid field names
     valid_fields = {f.name for f in dataclass_type.__dataclass_fields__.values()}
     return {k: v for k, v in data_dict.items() if k in valid_fields}
 
 
 @dataclass
 class EncodecConfig:
+    # Complete configuration specification for EnCodec model architecture.
+    # 
+    # Defines all hyperparameters and architectural choices for the EnCodec
+    # neural audio codec. These parameters control model size, compression
+    # ratio, quality, and computational requirements.
+    # 
+    # Used by:
+    # - `EncodecModel.__init__()` for model construction
+    # - Model loading and saving functions
+    # - Configuration validation and parameter tuning
+    # 
+    # Architecture Parameters:
+    #     model_type (str): Model identifier ("encodec")
+    #     audio_channels (int): Number of audio channels (1=mono, 2=stereo)
+    #     num_filters (int): Base number of convolutional filters
+    #     kernel_size (int): Convolutional kernel size
+    #     num_residual_layers (int): Number of residual blocks per stage
+    #     dilation_growth_rate (int): Dilation growth factor for temporal modeling
+    # 
+    # Quantization Parameters:
+    #     codebook_size (int): Size of vector quantization codebook
+    #     codebook_dim (int): Dimension of quantization vectors
+    #     compress (int): Temporal compression factor
+    # 
+    # Bottleneck Parameters:
+    #     hidden_size (int): LSTM hidden dimension
+    #     num_lstm_layers (int): Number of LSTM layers in bottleneck
+    # 
+    # Processing Parameters:
+    #     use_causal_conv (bool): Whether to use causal convolutions (for streaming)
+    #     normalize (bool): Whether to normalize audio input
+    #     pad_mode (str): Padding mode ("reflect", "constant", etc.)
+    #     norm_type (str): Normalization type ("weight_norm", "time_group_norm")
+    #     sampling_rate (int): Expected audio sampling rate in Hz
     model_type: str = "encodec"
     audio_channels: int = 1
-    num_filters: int = 32
-    kernel_size: int = 7
+    num_filters: int = DEFAULT_NUM_FILTERS
+    kernel_size: int = DEFAULT_KERNEL_SIZE
     num_residual_layers: int = 1
-    dilation_growth_rate: int = 2
-    codebook_size: int = 1024
-    codebook_dim: int = 128
-    hidden_size: int = 128
-    num_lstm_layers: int = 2
-    residual_kernel_size: int = 3
+    dilation_growth_rate: int = DEFAULT_DILATION_GROWTH_RATE
+    codebook_size: int = DEFAULT_CODEBOOK_SIZE
+    codebook_dim: int = DEFAULT_CODEBOOK_DIM
+    hidden_size: int = DEFAULT_HIDDEN_SIZE
+    num_lstm_layers: int = DEFAULT_NUM_LSTM_LAYERS
+    residual_kernel_size: int = RESIDUAL_KERNEL_SIZE
     use_causal_conv: bool = True
     normalize: bool = False
     pad_mode: str = "reflect"
     norm_type: str = "weight_norm"
-    last_kernel_size: int = 7
-    trim_right_ratio: float = 1.0
-    compress: int = 2
+    last_kernel_size: int = LAST_KERNEL_SIZE
+    trim_right_ratio: float = TRIM_RIGHT_RATIO
+    compress: int = DEFAULT_COMPRESSION_FACTOR
     upsampling_ratios: List[int] = None
     target_bandwidths: List[float] = None
-    sampling_rate: int = 24000
+    sampling_rate: int = DEFAULT_SAMPLING_RATE
     chunk_length_s: Optional[float] = None
     overlap: Optional[float] = None
     architectures: List[str] = None
@@ -48,21 +138,35 @@ class EncodecConfig:
 
 def preprocess_audio(
     raw_audio: Union[mx.array, List[mx.array]],
-    sampling_rate: int = 24000,
+    sampling_rate: int = DEFAULT_SAMPLING_RATE,
     chunk_length: Optional[int] = None,
     chunk_stride: Optional[int] = None,
 ):
-    r"""
-    Prepare inputs for the EnCodec model.
-
-    Args:
-        raw_audio (mx.array or List[mx.array]): The sequence or batch of
-            sequences to be processed.
-        sampling_rate (int): The sampling rate at which the audio waveform
-            should be digitalized.
-        chunk_length (int, optional): The model's chunk length.
-        chunk_stride (int, optional): The model's chunk stride.
-    """
+    # Preprocesses raw audio for EnCodec model input with batching and padding.
+    # 
+    # Converts raw audio arrays to model-compatible format with consistent
+    # batch dimensions and proper padding. Handles both single audio arrays
+    # and lists of arrays for batch processing.
+    # 
+    # The function ensures all audio has proper channel dimension (adds if mono)
+    # and pads to consistent length within batch for efficient processing.
+    # Optional chunking support for processing long audio files.
+    # 
+    # Called by:
+    # - `EncodecModel.encode()` for input preprocessing
+    # - Audio preprocessing pipelines
+    # - Batch inference utilities
+    # 
+    # Args:
+    #     raw_audio: Single audio array or list of arrays to preprocess
+    #     sampling_rate (int): Target sampling rate for audio processing
+    #     chunk_length (int, optional): Fixed chunk length for segmentation
+    #     chunk_stride (int, optional): Stride for overlapping chunks
+    # 
+    # Returns:
+    #     tuple: (batched_inputs, attention_masks)
+    #            - batched_inputs (mx.array): Batched audio of shape (B, T, C)
+    #            - attention_masks (mx.array): Valid sample masks of shape (B, T)
     if not isinstance(raw_audio, list):
         raw_audio = [raw_audio]
 
@@ -86,6 +190,25 @@ def preprocess_audio(
     return mx.stack(inputs), mx.stack(masks)
 
 
+# Custom Metal compute kernel for optimized LSTM computation on Apple Silicon.
+# 
+# This Metal kernel implements the core LSTM cell computation with maximum
+# efficiency on Apple's GPU architecture. The kernel processes all 4 LSTM gates
+# (input, forget, cell candidate, output) in parallel across the batch dimension.
+# 
+# Performance Benefits:
+# - Direct Metal GPU execution bypassing MLX overhead
+# - Parallel processing across batch dimension
+# - Optimized memory access patterns
+# - Fused sigmoid and tanh operations
+# 
+# The kernel computes the standard LSTM equations:
+# i_t = sigmoid(W_xi * x_t + W_hi * h_{t-1} + b_i)  # Input gate
+# f_t = sigmoid(W_xf * x_t + W_hf * h_{t-1} + b_f)  # Forget gate
+# g_t = tanh(W_xg * x_t + W_hg * h_{t-1} + b_g)     # Cell candidate
+# o_t = sigmoid(W_xo * x_t + W_ho * h_{t-1} + b_o)  # Output gate
+# c_t = f_t * c_{t-1} + i_t * g_t                   # Cell state
+# h_t = o_t * tanh(c_t)                             # Hidden state
 _lstm_kernel = mx.fast.metal_kernel(
     name="lstm",
     input_names=["x", "h_in", "cell", "hidden_size", "time_step", "num_time_steps"],
@@ -123,18 +246,62 @@ _lstm_kernel = mx.fast.metal_kernel(
 
 
 def lstm_custom(x, h_in, cell, time_step):
+    # Invokes the custom Metal LSTM kernel for efficient computation.
+    # 
+    # Wrapper function that configures and dispatches the Metal LSTM kernel
+    # with proper tensor shapes, data types, and grid configuration for
+    # optimal GPU utilization on Apple Silicon.
+    # 
+    # Called by:
+    # - `LSTM.__call__()` for each time step in sequence processing
+    # - EnCodec LSTM layers during encoding and decoding
+    # 
+    # Args:
+    #     x (mx.array): Input tensor of shape (batch, seq_len, 4*hidden_size)
+    #     h_in (mx.array): Previous hidden state of shape (batch, 4*hidden_size)
+    #     cell (mx.array): Previous cell state of shape (batch, hidden_size)
+    #     time_step (int): Current time step index in sequence
+    # 
+    # Returns:
+    #     tuple: (new_hidden_state, new_cell_state) both of shape (batch, hidden_size)
+    # 
+    # Raises:
+    #     AssertionError: If input tensor doesn't have exactly 3 dimensions
     assert x.ndim == 3, "Input to LSTM must have 3 dimensions."
     out_shape = cell.shape
     return _lstm_kernel(
         inputs=[x, h_in, cell, out_shape[-1], time_step, x.shape[-2]],
         output_shapes=[out_shape, out_shape],
         output_dtypes=[h_in.dtype, h_in.dtype],
-        grid=(x.shape[0], h_in.size // 4, 1),
-        threadgroup=(256, 1, 1),
+        grid=(x.shape[0], h_in.size // LSTM_GATE_COUNT, 1),  # Grid dimensions for parallel processing
+        threadgroup=(LSTM_THREADGROUP_SIZE, 1, 1),          # Metal threadgroup size
     )
 
 
 class LSTM(nn.Module):
+    # Custom LSTM implementation optimized for MLX with Metal kernel acceleration.
+    # 
+    # Implements Long Short-Term Memory recurrent neural network with custom
+    # Metal compute kernels for optimal performance on Apple Silicon. Uses
+    # standard LSTM gating mechanism with input, forget, cell, and output gates.
+    # 
+    # The implementation is optimized for the EnCodec bottleneck where LSTM
+    # layers model temporal dependencies in compressed audio representations.
+    # Metal kernels provide significant speedup over standard MLX operations.
+    # 
+    # Used by:
+    # - `EncodecLSTM` as the core recurrent component
+    # - EnCodec encoder-decoder bottleneck for temporal modeling
+    # 
+    # Architecture:
+    # - 4 gates per cell: input (i), forget (f), cell candidate (g), output (o)
+    # - Sigmoid activation for gates, tanh for cell state
+    # - Optional bias terms for all linear transformations
+    # 
+    # Args:
+    #     input_size (int): Input feature dimension
+    #     hidden_size (int): Hidden state and cell state dimension
+    #     bias (bool): Whether to include bias terms in linear layers
     def __init__(
         self,
         input_size: int,
@@ -144,9 +311,10 @@ class LSTM(nn.Module):
         super().__init__()
 
         self.hidden_size = hidden_size
-        self.Wx = mx.zeros((4 * hidden_size, input_size))
-        self.Wh = mx.zeros((4 * hidden_size, hidden_size))
-        self.bias = mx.zeros((4 * hidden_size,)) if bias else None
+        # Weight matrices: 4 gates × hidden_size for LSTM
+        self.Wx = mx.zeros((LSTM_GATE_COUNT * hidden_size, input_size))  # Input-to-hidden weights
+        self.Wh = mx.zeros((LSTM_GATE_COUNT * hidden_size, hidden_size)) # Hidden-to-hidden weights
+        self.bias = mx.zeros((LSTM_GATE_COUNT * hidden_size,)) if bias else None  # Bias terms
 
     def __call__(self, x, hidden=None, cell=None):
         if self.bias is not None:
@@ -170,8 +338,31 @@ class LSTM(nn.Module):
 
 
 class EncodecConv1d(nn.Module):
-    """Conv1d with asymmetric or causal padding and normalization."""
-
+    # 1D convolutional layer with EnCodec-specific padding and normalization.
+    # 
+    # Implements 1D convolution with flexible padding strategies to support
+    # both causal (streaming) and non-causal (offline) processing modes.
+    # Includes optional time-domain group normalization for stable training.
+    # 
+    # Features:
+    # - Asymmetric padding for proper temporal alignment
+    # - Causal padding for streaming applications
+    # - Reflect padding for boundary artifact reduction
+    # - Optional group normalization in time domain
+    # - Dilated convolutions for expanded receptive fields
+    # 
+    # Used by:
+    # - `EncodecEncoder` convolutional downsampling layers
+    # - `EncodecDecoder` convolutional upsampling layers
+    # - Residual blocks throughout the EnCodec architecture
+    # 
+    # Args:
+    #     config (EncodecConfig): Model configuration with padding and norm settings
+    #     in_channels (int): Number of input channels
+    #     out_channels (int): Number of output channels
+    #     kernel_size (int): Convolution kernel size
+    #     stride (int): Convolution stride for temporal downsampling
+    #     dilation (int): Dilation rate for expanded receptive field
     def __init__(
         self,
         config,
@@ -194,9 +385,10 @@ class EncodecConv1d(nn.Module):
 
         self.stride = stride
 
-        # Effective kernel size with dilations.
+        # Effective kernel size accounting for dilation
         self.kernel_size = (kernel_size - 1) * dilation + 1
 
+        # Total padding needed for proper output alignment
         self.padding_total = kernel_size - stride
 
     def _get_extra_padding_for_conv1d(
@@ -253,8 +445,31 @@ class EncodecConv1d(nn.Module):
 
 
 class EncodecConvTranspose1d(nn.Module):
-    """ConvTranspose1d with asymmetric or causal padding and normalization."""
-
+    # Transposed 1D convolution for EnCodec upsampling with proper padding.
+    # 
+    # Implements transposed convolution (deconvolution) for temporal upsampling
+    # in the EnCodec decoder. Handles both causal and non-causal modes with
+    # appropriate padding to maintain proper temporal alignment.
+    # 
+    # The layer performs upsampling to reconstruct higher temporal resolution
+    # from compressed representations, essential for audio reconstruction.
+    # 
+    # Features:
+    # - Transposed convolution for temporal upsampling
+    # - Causal and non-causal padding strategies
+    # - Configurable right-side trimming for causal mode
+    # - Optional time-domain group normalization
+    # 
+    # Used by:
+    # - `EncodecDecoder` upsampling layers
+    # - Audio reconstruction pathway in EnCodec model
+    # 
+    # Args:
+    #     config (EncodecConfig): Model configuration with mode and norm settings
+    #     in_channels (int): Number of input channels
+    #     out_channels (int): Number of output channels  
+    #     kernel_size (int): Transposed convolution kernel size
+    #     stride (int): Upsampling stride factor
     def __init__(
         self,
         config,
