@@ -220,8 +220,8 @@ class KokoroBenchmark:
         # Clear memory cache before inference
         mx.clear_cache()
         
-        # Get memory before inference
-        memory_before = mx.metal.get_peak_memory() / (1024**3)  # Convert to GB
+        # Get peak memory using non-deprecated API
+        memory_before = mx.get_peak_memory() / (1024**3)  # Convert to GB
         
         start_time = time.perf_counter()
         
@@ -234,23 +234,24 @@ class KokoroBenchmark:
         
         for result in results_gen:
             if result.audio is not None:
-                audio_segments.append(np.array(result.audio))
-                total_samples += len(result.audio)
+                seg = np.asarray(result.audio).reshape(-1)
+                audio_segments.append(seg)
+                total_samples += seg.shape[0]
         
         inference_time = time.perf_counter() - start_time
         
         # Get peak memory after inference
-        memory_after = mx.metal.get_peak_memory() / (1024**3)  # Convert to GB
+        memory_after = mx.get_peak_memory() / (1024**3)  # Convert to GB
         peak_memory = memory_after
         
-        # Concatenate audio segments
+        # Concatenate audio segments (flatten to 1D per segment)
         if audio_segments:
             audio_data = np.concatenate(audio_segments, axis=0)
         else:
             raise RuntimeError("No audio generated")
             
         # Calculate metrics
-        audio_duration = len(audio_data) / 24000  # Assuming 24kHz sample rate
+        audio_duration = audio_data.shape[0] / 24000  # Assuming 24kHz sample rate
         real_time_factor = inference_time / audio_duration if audio_duration > 0 else float('inf')
         samples_per_sec = total_samples / inference_time if inference_time > 0 else 0
         total_time = load_time + inference_time

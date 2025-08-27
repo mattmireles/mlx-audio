@@ -153,9 +153,12 @@ class LSTM(nn.Module):
         """Process sequence in forward direction"""
         # Pre-compute input projections
         if self.bias_ih_forward is not None and self.bias_hh_forward is not None:
-            x_proj = mx.addmm(
-                self.bias_ih_forward + self.bias_hh_forward, x, self.Wx_forward.T
-            )
+            # x: (batch, seq_len, input_size)
+            # Wx_forward: (4*hidden_size, input_size)
+            # x @ Wx_forward.T -> (batch, seq_len, 4*hidden_size)
+            # Add combined bias broadcast over last dim
+            x_proj = x @ self.Wx_forward.T
+            x_proj = x_proj + (self.bias_ih_forward + self.bias_hh_forward)
         else:
             x_proj = x @ self.Wx_forward.T
 
@@ -197,9 +200,10 @@ class LSTM(nn.Module):
         """Process sequence in backward direction"""
         # Pre-compute input projections
         if self.bias_ih_backward is not None and self.bias_hh_backward is not None:
-            x_proj = mx.addmm(
-                self.bias_ih_backward + self.bias_hh_backward, x, self.Wx_backward.T
-            )
+            # x: (batch, seq_len, input_size)
+            # Wx_backward: (4*hidden_size, input_size)
+            x_proj = x @ self.Wx_backward.T
+            x_proj = x_proj + (self.bias_ih_backward + self.bias_hh_backward)
         else:
             x_proj = x @ self.Wx_backward.T
 

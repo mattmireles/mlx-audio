@@ -21,7 +21,10 @@ logger.configure(
 )  # Add back with explicit level
 
 # Style vector processing constants
-STYLE_VECTOR_SPLIT_INDEX = 64  # Split index for decoder (64) vs conditioning (64) style vectors
+# Voice packs are 256-dim style vectors. We split into two 128-d halves:
+# - First 128 dims for the decoder (vocoder) conditioning
+# - Last 128 dims for text/prosody conditioning across the model
+STYLE_VECTOR_SPLIT_INDEX = 128
 MIN_DURATION_CLAMP = 1         # Minimum duration clamp for phoneme timing
 
 
