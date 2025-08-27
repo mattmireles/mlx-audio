@@ -383,7 +383,9 @@ class KokoroBenchmark:
         print("=" * 100)
         
         # Table headers
-        print(f"{'Model':<25} {'Load(s)':<8} {'Infer(s)':<9} {'Total(s)':<9} {'RTF':<6} {'Samples/s':<10} {'Memory(GB)':<11}")
+        print(
+            f"{'Model':<25} {'Load(s)':<8} {'Infer(s)':<9} {'TTFA(s)':<8} {'Total(s)':<9} {'RTF':<6} {'Samples/s':<10} {'Memory(GB)':<11}"
+        )
         print("-" * 100)
         
         # Sort by total time for comparison
@@ -391,9 +393,11 @@ class KokoroBenchmark:
         
         for result in sorted_results:
             model_short = result.model_name.split("/")[-1][:24]
-            print(f"{model_short:<25} {result.model_load_time:<8.2f} {result.inference_time:<9.2f} "
-                  f"{result.total_time:<9.2f} {result.real_time_factor:<6.2f} "
-                  f"{result.samples_per_sec:<10.0f} {result.peak_memory_gb:<11.2f}")
+            print(
+                f"{model_short:<25} {result.model_load_time:<8.2f} {result.inference_time:<9.2f} "
+                f"{result.time_to_first_audio:<8.2f} {result.total_time:<9.2f} {result.real_time_factor:<6.2f} "
+                f"{result.samples_per_sec:<10.0f} {result.peak_memory_gb:<11.2f}"
+            )
         
         print("-" * 100)
         
