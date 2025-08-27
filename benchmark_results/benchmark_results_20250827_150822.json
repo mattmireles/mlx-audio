@@ -1,0 +1,58 @@
+[
+  {
+    "model_name": "mlx-community/Kokoro-82M-bf16",
+    "model_description": "Kokoro 82M (bfloat16 - Full Precision)",
+    "text": "When one of Italy's much-loved Five Towers toppled, it seemed a rare, exceptional event. In fact, throughout this stunning mountain range, peaks are crumbling.",
+    "voice": "af_sky",
+    "model_load_time": 0.4315737499855459,
+    "inference_time": 2.8343117919866927,
+    "total_time": 3.2658855419722386,
+    "audio_duration": 9.525,
+    "real_time_factor": 0.2975655424657945,
+    "samples_per_sec": 80654.49984941998,
+    "peak_memory_gb": 1.9483717922121286,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-8bit",
+    "model_description": "Kokoro 82M (8-bit Quantized)",
+    "text": "When one of Italy's much-loved Five Towers toppled, it seemed a rare, exceptional event. In fact, throughout this stunning mountain range, peaks are crumbling.",
+    "voice": "af_sky",
+    "model_load_time": 0.33779758401215076,
+    "inference_time": 2.6495259170187637,
+    "total_time": 2.9873235010309145,
+    "audio_duration": 9.5,
+    "real_time_factor": 0.27889746494934353,
+    "samples_per_sec": 86053.13068858172,
+    "peak_memory_gb": 2.1925488272681832,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-6bit",
+    "model_description": "Kokoro 82M (6-bit Quantized)",
+    "text": "When one of Italy's much-loved Five Towers toppled, it seemed a rare, exceptional event. In fact, throughout this stunning mountain range, peaks are crumbling.",
+    "voice": "af_sky",
+    "model_load_time": 0.2876233750139363,
+    "inference_time": 2.6424816669896245,
+    "total_time": 2.930105042003561,
+    "audio_duration": 9.55,
+    "real_time_factor": 0.27669965099367794,
+    "samples_per_sec": 86736.64716891295,
+    "peak_memory_gb": 2.467823832295835,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-4bit",
+    "model_description": "Kokoro 82M (4-bit Quantized)",
+    "text": "When one of Italy's much-loved Five Towers toppled, it seemed a rare, exceptional event. In fact, throughout this stunning mountain range, peaks are crumbling.",
+    "voice": "af_sky",
+    "model_load_time": 0.22815099998842925,
+    "inference_time": 2.5071079999906942,
+    "total_time": 2.7352589999791235,
+    "audio_duration": 9.475,
+    "real_time_factor": 0.2646024274396511,
+    "samples_per_sec": 90702.11574485186,
+    "peak_memory_gb": 2.7191068129613996,
+    "sample_rate": 24000
+  }
+]
