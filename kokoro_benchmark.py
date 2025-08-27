@@ -77,6 +77,8 @@ class BenchmarkResult:
     model_load_time: float
     inference_time: float
     total_time: float
+    time_to_first_audio: float
+    per_sentence_inference: List[float]
     
     # Audio metrics
     audio_duration: float
@@ -224,21 +226,31 @@ class KokoroBenchmark:
         memory_before = mx.get_peak_memory() / (1024**3)  # Convert to GB
         
         start_time = time.perf_counter()
-        
-        # Generate audio 
+
+        # Generate audio and collect sentence-by-sentence timings
         results_gen = pipeline(text, voice=voice, speed=1.0)
-        
-        # Collect all audio segments
-        audio_segments = []
+
+        audio_segments: List[np.ndarray] = []
         total_samples = 0
-        
-        for result in results_gen:
+        per_sentence_inference: List[float] = []
+        time_to_first_audio: Optional[float] = None
+
+        last_ts = time.perf_counter()
+        for idx, result in enumerate(results_gen):
+            now = time.perf_counter()
+            delta = now - last_ts
+            per_sentence_inference.append(delta)
+            if time_to_first_audio is None and result.audio is not None:
+                time_to_first_audio = now - start_time
+            last_ts = now
+
             if result.audio is not None:
                 seg = np.asarray(result.audio).reshape(-1)
                 audio_segments.append(seg)
                 total_samples += seg.shape[0]
-        
+
         inference_time = time.perf_counter() - start_time
+        time_to_first_audio = time_to_first_audio or inference_time
         
         # Get peak memory after inference
         memory_after = mx.get_peak_memory() / (1024**3)  # Convert to GB
@@ -264,6 +276,8 @@ class KokoroBenchmark:
             model_load_time=load_time,
             inference_time=inference_time, 
             total_time=total_time,
+            time_to_first_audio=time_to_first_audio,
+            per_sentence_inference=per_sentence_inference,
             audio_duration=audio_duration,
             real_time_factor=real_time_factor,
             samples_per_sec=samples_per_sec,
@@ -275,11 +289,15 @@ class KokoroBenchmark:
         # Print results
         print(f"⏱️  Model Load Time: {load_time:.2f}s")
         print(f"⏱️  Inference Time: {inference_time:.2f}s") 
+        print(f"🎯 Time to First Audio: {time_to_first_audio:.2f}s")
         print(f"⏱️  Total Time: {total_time:.2f}s")
         print(f"🎵 Audio Duration: {audio_duration:.2f}s")
         print(f"⚡ Real-time Factor: {real_time_factor:.2f}x")
         print(f"📈 Samples/sec: {samples_per_sec:.1f}")
         print(f"🧠 Peak Memory: {peak_memory:.2f}GB")
+        if per_sentence_inference:
+            pretty = ", ".join(f"{t:.2f}s" for t in per_sentence_inference)
+            print(f"📝 Per-sentence inference times: [{pretty}]")
         
         return result
 
@@ -330,6 +348,8 @@ class KokoroBenchmark:
                 "model_load_time": result.model_load_time,
                 "inference_time": result.inference_time,
                 "total_time": result.total_time,
+                "time_to_first_audio": result.time_to_first_audio,
+                "per_sentence_inference": result.per_sentence_inference,
                 "audio_duration": result.audio_duration,
                 "real_time_factor": result.real_time_factor,
                 "samples_per_sec": result.samples_per_sec,
