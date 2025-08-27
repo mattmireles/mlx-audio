@@ -187,7 +187,7 @@ pipeline = KokoroPipeline(lang_code='a', model=model, repo_id=model_id)
 
 # Generate audio
 text = "The MLX King lives. Let him cook!"
-for _, _, audio in pipeline(text, voice='af_heart', speed=1, split_pattern=r'\n+'):
+for _, _, audio in pipeline(text, voice='af_heart', speed=1):
     # Display audio in notebook (if applicable)
     display(Audio(data=audio, rate=24000, autoplay=0))
 

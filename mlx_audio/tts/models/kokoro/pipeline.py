@@ -199,31 +199,84 @@ class KokoroPipeline:
     def en_tokenize(
         self, tokens: List[en.MToken]
     ) -> Generator[Tuple[str, str, List[en.MToken]], None, None]:
-        tks = []
-        pcount = 0
-        for t in tokens:
-            # American English: ɾ => T
-            t.phonemes = "" if t.phonemes is None else t.phonemes.replace("ɾ", "T")
-            next_ps = t.phonemes + (" " if t.whitespace else "")
-            next_pcount = pcount + len(next_ps.rstrip())
-            if next_pcount > 510:
-                z = KokoroPipeline.waterfall_last(tks, next_pcount)
-                text = KokoroPipeline.tokens_to_text(tks[:z])
-                logging.debug(
-                    f"Chunking text at {z}: '{text[:30]}{'...' if len(text) > 30 else ''}'"
+        """
+        Yield one or more chunks from a single sentence worth of MTokens.
+
+        This function now acts as a safeguard for pathological cases only.
+        It assumes `tokens` correspond to a single sentence. If the resulting
+        phoneme string is longer than SAFEGUARD_THRESHOLD, it performs a naive
+        split at the nearest comma (or a hard character limit) and logs a warning.
+        """
+        # Normalize tap flap to alveolar stop for American English
+        processed_tokens: List[en.MToken] = []
+        for token in tokens:
+            token.phonemes = "" if token.phonemes is None else token.phonemes.replace("ɾ", "T")
+            processed_tokens.append(token)
+
+        def ps_len(upto: int | None = None) -> int:
+            part = processed_tokens if upto is None else processed_tokens[:upto]
+            return len(KokoroPipeline.tokens_to_ps(part))
+
+        total_ps = KokoroPipeline.tokens_to_ps(processed_tokens)
+        if not total_ps:
+            return
+
+        MAX_PHONEMES = 510
+        SAFEGUARD_THRESHOLD = 400
+
+        if len(total_ps) <= MAX_PHONEMES and len(total_ps) <= SAFEGUARD_THRESHOLD:
+            text = KokoroPipeline.tokens_to_text(processed_tokens)
+            yield text, total_ps, processed_tokens
+            return
+
+        # Pathological sentence: try to split near the threshold at punctuation
+        logging.warning(
+            f"Long sentence detected in en_tokenize with {len(total_ps)} phonemes; attempting safe split."
+        )
+
+        split_points: List[int] = []
+        punctuation_phonemes = {",", ";", ":", "—", "–"}
+        for i, t in enumerate(processed_tokens):
+            if t.phonemes in punctuation_phonemes:
+                split_points.append(i + 1)  # split after punctuation token
+
+        cursor = 0
+        while cursor < len(processed_tokens):
+            # Find best split point not exceeding SAFEGUARD_THRESHOLD phonemes from cursor
+            target = SAFEGUARD_THRESHOLD
+            best_idx = None
+            for idx in split_points:
+                if idx <= cursor:
+                    continue
+                length_here = len(KokoroPipeline.tokens_to_ps(processed_tokens[cursor:idx]))
+                if length_here <= target:
+                    best_idx = idx
+                else:
+                    break
+
+            if best_idx is None:
+                # Fallback hard chop to respect MAX_PHONEMES
+                left = cursor
+                # grow until max
+                right = left
+                while right < len(processed_tokens) and len(
+                    KokoroPipeline.tokens_to_ps(processed_tokens[left:right + 1])
+                ) <= MAX_PHONEMES:
+                    right += 1
+                idx = max(left + 1, right)  # ensure forward progress
+            else:
+                idx = best_idx
+
+            chunk_tokens = processed_tokens[cursor:idx]
+            text = KokoroPipeline.tokens_to_text(chunk_tokens)
+            ps = KokoroPipeline.tokens_to_ps(chunk_tokens)
+            if len(ps) > MAX_PHONEMES:
+                logging.warning(
+                    f"Safeguard split still exceeds max ({len(ps)} > {MAX_PHONEMES}); truncating."
                 )
-                ps = KokoroPipeline.tokens_to_ps(tks[:z])
-                yield text, ps, tks[:z]
-                tks = tks[z:]
-                pcount = len(KokoroPipeline.tokens_to_ps(tks))
-                if not tks:
-                    next_ps = next_ps.lstrip()
-            tks.append(t)
-            pcount += len(next_ps)
-        if tks:
-            text = KokoroPipeline.tokens_to_text(tks)
-            ps = KokoroPipeline.tokens_to_ps(tks)
-            yield "".join(text).strip(), "".join(ps).strip(), tks
+                ps = ps[:MAX_PHONEMES]
+            yield text, ps, chunk_tokens
+            cursor = idx
 
     @classmethod
     def infer(
@@ -360,28 +413,67 @@ class KokoroPipeline:
         text: Union[str, List[str]],
         voice: Optional[str] = None,
         speed: Number = 1,
-        split_pattern: Optional[str] = r"\n+",
     ) -> Generator["KokoroPipeline.Result", None, None]:
+        """
+        Generate audio in a unified, sentence-by-sentence streaming fashion.
+
+        The input text is first split into sentences using a robust sentence
+        splitter. Each sentence is then processed identically regardless of
+        language: G2P → phonemes → inference. English uses `en_tokenize` as a
+        safeguard for pathological long sentences; other languages are processed
+        directly per sentence with truncation at model limits.
+        """
         if voice is None:
             raise ValueError(
                 'Specify a voice: en_us_pipeline(text="Hello world!", voice="af_heart")'
             )
         pack = self.load_voice(voice) if self.model else None
-        if isinstance(text, str):
-            text = re.split(split_pattern, text.strip()) if split_pattern else [text]
-        # Process each segment
-        for graphemes_index, graphemes in enumerate(text):
+        
+        # Helper: split paragraphs and sentences
+        def split_into_sentences(src: Union[str, List[str]]) -> List[str]:
+            # Treat list[str] as pre-split paragraphs
+            paragraphs: List[str]
+            if isinstance(src, list):
+                paragraphs = [p for p in src if isinstance(p, str)]
+            else:
+                # Split on blank lines to respect explicit paragraph breaks
+                paragraphs = [p for p in re.split(r"\n{2,}", src.strip()) if p]
+
+            sentence_boundary = re.compile(
+                r"(?<=[\.!?…。！？])\s+(?=[\“\"'\(\[]?[A-Z])"
+            )
+
+            sentences: List[str] = []
+            abbreviations = {"Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St."}
+
+            for para in paragraphs:
+                parts = re.split(sentence_boundary, para.strip())
+                if not parts:
+                    continue
+                # Merge simple abbreviation splits (e.g., "Dr." + "Smith …")
+                merged: List[str] = []
+                for part in parts:
+                    if merged and merged[-1].strip().split()[-1] in abbreviations:
+                        merged[-1] = merged[-1].rstrip() + " " + part.lstrip()
+                    else:
+                        merged.append(part)
+                sentences.extend([s for s in merged if s.strip()])
+            return sentences
+
+        sentences = split_into_sentences(text)
+
+        # Process each sentence
+        for graphemes_index, graphemes in enumerate(sentences):
             if not graphemes.strip():  # Skip empty segments
                 continue
 
-            # English processing (unchanged)
+            # English processing
             if self.lang_code in "ab":
-                # print(f"Processing English text: {graphemes[:50]}{'...' if len(graphemes) > 50 else ''}")
                 _, tokens = self.g2p(graphemes)
                 for gs, ps, tks in self.en_tokenize(tokens):
                     if not ps:
                         continue
-                    elif len(ps) > 510:
+                    if len(ps) > 510:
                         logging.warning(
                             f"Unexpected len(ps) == {len(ps)} > 510 and ps == '{ps}'"
                         )
@@ -400,61 +492,24 @@ class KokoroPipeline:
                         output=output,
                         text_index=graphemes_index,
                     )
-
-            # Non-English processing with chunking
+            # Unified non-English processing per sentence
             else:
-                # Split long text into smaller chunks (roughly 400 characters each)
-                # Using sentence boundaries when possible
-                chunk_size = 400
-                chunks = []
-
-                # Try to split on sentence boundaries first
-                sentences = re.split(r"([.!?]+)", graphemes)
-                current_chunk = ""
-
-                for i in range(0, len(sentences), 2):
-                    sentence = sentences[i]
-                    # Add the punctuation back if it exists
-                    if i + 1 < len(sentences):
-                        sentence += sentences[i + 1]
-
-                    if len(current_chunk) + len(sentence) <= chunk_size:
-                        current_chunk += sentence
-                    else:
-                        if current_chunk:
-                            chunks.append(current_chunk.strip())
-                        current_chunk = sentence
-
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-
-                # If no chunks were created (no sentence boundaries), fall back to character-based chunking
-                if not chunks:
-                    chunks = [
-                        graphemes[i : i + chunk_size]
-                        for i in range(0, len(graphemes), chunk_size)
-                    ]
-
-                # Process each chunk
-                for chunk in chunks:
-                    if not chunk.strip():
-                        continue
-
-                    ps, _ = self.g2p(chunk)
-                    if not ps:
-                        continue
-                    elif len(ps) > 510:
-                        logging.warning(f"Truncating len(ps) == {len(ps)} > 510")
-                        ps = ps[:510]
-
-                    output = (
-                        KokoroPipeline.infer(self.model, ps, pack, speed)
-                        if self.model
-                        else None
+                ps, _ = self.g2p(graphemes)
+                if not ps:
+                    continue
+                if len(ps) > 510:
+                    logging.warning(
+                        f"Phoneme string too long for single sentence ({len(ps)} > 510); truncating."
                     )
-                    yield self.Result(
-                        graphemes=chunk,
-                        phonemes=ps,
-                        output=output,
-                        text_index=graphemes_index,
-                    )
+                    ps = ps[:510]
+                output = (
+                    KokoroPipeline.infer(self.model, ps, pack, speed)
+                    if self.model
+                    else None
+                )
+                yield self.Result(
+                    graphemes=graphemes,
+                    phonemes=ps,
+                    output=output,
+                    text_index=graphemes_index,
+                )

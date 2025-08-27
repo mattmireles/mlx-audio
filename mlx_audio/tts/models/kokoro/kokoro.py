@@ -326,8 +326,13 @@ class Model(nn.Module):
         # Track overall generation time
         start_time = time.time()
 
+        if split_pattern is not None:
+            logger.warning(
+                "split_pattern is deprecated and ignored; using unified sentence tokenizer."
+            )
+
         for segment_idx, (graphenes, phonemes, audio) in enumerate(
-            pipeline(text, voice=voice, speed=speed, split_pattern=split_pattern)
+            pipeline(text, voice=voice, speed=speed)
         ):
             # Track per-segment generation time
             segment_time = time.time() - start_time
