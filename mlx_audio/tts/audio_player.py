@@ -28,9 +28,10 @@ class AudioPlayer:
     measure_window = 0.25
     ema_alpha = 0.25
 
-    def __init__(self, sample_rate: int = 24_000, buffer_size: int = 2048):
+    def __init__(self, sample_rate: int = 24_000, buffer_size: int = 2048, verbose: bool = False):
         self.sample_rate = sample_rate
         self.buffer_size = buffer_size
+        self.verbose = verbose
 
         self.audio_buffer = deque()
         self.buffer_lock = Lock()
@@ -83,7 +84,8 @@ class AudioPlayer:
         if self._fallback_mode:
             return  # already in fallback
 
-        print("\nStarting audio stream...")
+        if self.verbose:
+            print("\nStarting audio stream...")
         candidate_rates = []
         # Prefer the requested rate
         candidate_rates.append(self.sample_rate)
@@ -110,7 +112,7 @@ class AudioPlayer:
                     self.drain_event.clear()
                     self.playback_sample_rate = rate
                     self.channels = ch
-                    if rate != self.sample_rate:
+                    if rate != self.sample_rate and self.verbose:
                         print(f"sounddevice: using {rate} Hz for playback (resampling from {self.sample_rate} Hz)")
                         # Resample already-buffered chunks to the device rate
                         with self.buffer_lock:
@@ -131,7 +133,8 @@ class AudioPlayer:
                     continue
 
         # If we reach here, PortAudio failed
-        print(f"sounddevice OutputStream unavailable, falling back to system audio player. Reason: {last_error}")
+        if self.verbose:
+            print(f"sounddevice OutputStream unavailable, falling back to system audio player. Reason: {last_error}")
         # Transfer any already-buffered samples into fallback segments
         with self.buffer_lock:
             while self.audio_buffer:

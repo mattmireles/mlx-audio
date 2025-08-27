@@ -291,7 +291,7 @@ class KokoroBenchmark:
         try:
             print(f"\n🔊 Playing audio from {result.model_description}...")
             
-            player = AudioPlayer(sample_rate=result.sample_rate)
+            player = AudioPlayer(sample_rate=result.sample_rate, verbose=False)
             player.queue_audio(result.audio_data)
             player.wait_for_drain()
             player.stop()
