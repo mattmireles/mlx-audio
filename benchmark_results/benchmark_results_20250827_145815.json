@@ -1,0 +1,58 @@
+[
+  {
+    "model_name": "mlx-community/Kokoro-82M-bf16",
+    "model_description": "Kokoro 82M (bfloat16 - Full Precision)",
+    "text": "Hello, this is a benchmark test of the Kokoro text-to-speech system. We are testing different model quantization levels for performance and quality.",
+    "voice": "af_heart",
+    "model_load_time": 8.794434457959142,
+    "inference_time": 3.2677536659757607,
+    "total_time": 12.062188123934902,
+    "audio_duration": 9.325,
+    "real_time_factor": 0.35042934755772237,
+    "samples_per_sec": 68487.41455949761,
+    "peak_memory_gb": 1.914268298074603,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-8bit",
+    "model_description": "Kokoro 82M (8-bit Quantized)",
+    "text": "Hello, this is a benchmark test of the Kokoro text-to-speech system. We are testing different model quantization levels for performance and quality.",
+    "voice": "af_heart",
+    "model_load_time": 6.787014292029198,
+    "inference_time": 1.8558374579879455,
+    "total_time": 8.642851750017144,
+    "audio_duration": 9.3,
+    "real_time_factor": 0.19955241483741348,
+    "samples_per_sec": 120269.15344298961,
+    "peak_memory_gb": 2.1589322248473763,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-6bit",
+    "model_description": "Kokoro 82M (6-bit Quantized)",
+    "text": "Hello, this is a benchmark test of the Kokoro text-to-speech system. We are testing different model quantization levels for performance and quality.",
+    "voice": "af_heart",
+    "model_load_time": 5.281351916026324,
+    "inference_time": 1.7153997500427067,
+    "total_time": 6.996751666069031,
+    "audio_duration": 9.375,
+    "real_time_factor": 0.18297597333788873,
+    "samples_per_sec": 131164.7620296076,
+    "peak_memory_gb": 2.438509604893625,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-4bit",
+    "model_description": "Kokoro 82M (4-bit Quantized)",
+    "text": "Hello, this is a benchmark test of the Kokoro text-to-speech system. We are testing different model quantization levels for performance and quality.",
+    "voice": "af_heart",
+    "model_load_time": 5.021846209012438,
+    "inference_time": 1.826236000051722,
+    "total_time": 6.8480822090641595,
+    "audio_duration": 9.6,
+    "real_time_factor": 0.1902329166720544,
+    "samples_per_sec": 126161.13141646243,
+    "peak_memory_gb": 2.7402239004150033,
+    "sample_rate": 24000
+  }
+]

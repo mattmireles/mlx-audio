@@ -1,0 +1,58 @@
+[
+  {
+    "model_name": "mlx-community/Kokoro-82M-bf16",
+    "model_description": "Kokoro 82M (bfloat16 - Full Precision)",
+    "text": "True to its name, the Five Towers \u2013 a small, iconic mountain range in the Dolomites (Eastern Italian Alps) \u2013 resembled five stone fingers spreading up towards the sky. One night between 4 and 7 June 2004, one of them, the Trephor Tower, came down. The Rifugio Scoiattoli \u2013 a chalet so close by that patrons can easily stroll to touch the rocks even after eating too much polenta \u2013 hadn't opened for the summer season yet, so no one heard a thing. One morning, they saw the Trephor, a monolith of more than 10,000 cubic metres \u2013 the size of the leaning Tower of Pisa without the bells and the tourists \u2013 lying down horizontally.",
+    "voice": "am_michael",
+    "model_load_time": 0.39944058295805007,
+    "inference_time": 7.9138444169657305,
+    "total_time": 8.31328499992378,
+    "audio_duration": 43.15,
+    "real_time_factor": 0.18340311510928692,
+    "samples_per_sec": 130859.2822193821,
+    "peak_memory_gb": 2.926315765827894,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-8bit",
+    "model_description": "Kokoro 82M (8-bit Quantized)",
+    "text": "True to its name, the Five Towers \u2013 a small, iconic mountain range in the Dolomites (Eastern Italian Alps) \u2013 resembled five stone fingers spreading up towards the sky. One night between 4 and 7 June 2004, one of them, the Trephor Tower, came down. The Rifugio Scoiattoli \u2013 a chalet so close by that patrons can easily stroll to touch the rocks even after eating too much polenta \u2013 hadn't opened for the summer season yet, so no one heard a thing. One morning, they saw the Trephor, a monolith of more than 10,000 cubic metres \u2013 the size of the leaning Tower of Pisa without the bells and the tourists \u2013 lying down horizontally.",
+    "voice": "am_michael",
+    "model_load_time": 0.4141144589520991,
+    "inference_time": 6.362692666007206,
+    "total_time": 6.776807124959305,
+    "audio_duration": 43.175,
+    "real_time_factor": 0.1473698359237338,
+    "samples_per_sec": 162855.57929521194,
+    "peak_memory_gb": 3.200729925185442,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-6bit",
+    "model_description": "Kokoro 82M (6-bit Quantized)",
+    "text": "True to its name, the Five Towers \u2013 a small, iconic mountain range in the Dolomites (Eastern Italian Alps) \u2013 resembled five stone fingers spreading up towards the sky. One night between 4 and 7 June 2004, one of them, the Trephor Tower, came down. The Rifugio Scoiattoli \u2013 a chalet so close by that patrons can easily stroll to touch the rocks even after eating too much polenta \u2013 hadn't opened for the summer season yet, so no one heard a thing. One morning, they saw the Trephor, a monolith of more than 10,000 cubic metres \u2013 the size of the leaning Tower of Pisa without the bells and the tourists \u2013 lying down horizontally.",
+    "voice": "am_michael",
+    "model_load_time": 0.6215853749890812,
+    "inference_time": 6.589670333021786,
+    "total_time": 7.211255708010867,
+    "audio_duration": 43.0,
+    "real_time_factor": 0.15324814727957642,
+    "samples_per_sec": 156608.74487582475,
+    "peak_memory_gb": 3.4551473297178745,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-4bit",
+    "model_description": "Kokoro 82M (4-bit Quantized)",
+    "text": "True to its name, the Five Towers \u2013 a small, iconic mountain range in the Dolomites (Eastern Italian Alps) \u2013 resembled five stone fingers spreading up towards the sky. One night between 4 and 7 June 2004, one of them, the Trephor Tower, came down. The Rifugio Scoiattoli \u2013 a chalet so close by that patrons can easily stroll to touch the rocks even after eating too much polenta \u2013 hadn't opened for the summer season yet, so no one heard a thing. One morning, they saw the Trephor, a monolith of more than 10,000 cubic metres \u2013 the size of the leaning Tower of Pisa without the bells and the tourists \u2013 lying down horizontally.",
+    "voice": "am_michael",
+    "model_load_time": 0.3641900419606827,
+    "inference_time": 6.446801416983362,
+    "total_time": 6.810991458944045,
+    "audio_duration": 43.575,
+    "real_time_factor": 0.14794724995945752,
+    "samples_per_sec": 162219.9804766685,
+    "peak_memory_gb": 3.7560156220570207,
+    "sample_rate": 24000
+  }
+]
