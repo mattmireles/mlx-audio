@@ -227,8 +227,11 @@ class KokoroBenchmark:
         
         start_time = time.perf_counter()
 
-        # Generate audio and collect sentence-by-sentence timings
+        # Generate audio and collect sentence-by-sentence timings while streaming playback
         results_gen = pipeline(text, voice=voice, speed=1.0)
+
+        # Start an audio player to stream segments as they arrive
+        player = AudioPlayer(sample_rate=model.sample_rate, verbose=False)
 
         audio_segments: List[np.ndarray] = []
         total_samples = 0
@@ -246,6 +249,9 @@ class KokoroBenchmark:
 
             if result.audio is not None:
                 seg = np.asarray(result.audio).reshape(-1)
+                # Stream to device for "streaming feel"
+                player.queue_audio(seg)
+                # Also collect for metrics and saving
                 audio_segments.append(seg)
                 total_samples += seg.shape[0]
 
@@ -256,6 +262,10 @@ class KokoroBenchmark:
         memory_after = mx.get_peak_memory() / (1024**3)  # Convert to GB
         peak_memory = memory_after
         
+        # Ensure playback finishes
+        player.wait_for_drain()
+        player.stop()
+
         # Concatenate audio segments (flatten to 1D per segment)
         if audio_segments:
             audio_data = np.concatenate(audio_segments, axis=0)
