@@ -20,6 +20,10 @@ logger.configure(
     handlers=[{"sink": sys.stderr, "level": "DEBUG"}]
 )  # Add back with explicit level
 
+# Style vector processing constants
+STYLE_VECTOR_SPLIT_INDEX = 64  # Split index for decoder (64) vs conditioning (64) style vectors
+MIN_DURATION_CLAMP = 1         # Minimum duration clamp for phoneme timing
+
 
 def sanitize_lstm_weights(key: str, state_dict: mx.array) -> dict:
     """Convert PyTorch LSTM weight keys to MLX LSTM weight keys."""
