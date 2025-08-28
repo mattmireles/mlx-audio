@@ -59,8 +59,8 @@ public class KokoroTTSModel: ObservableObject {
 
     @Published public var audioGenerationTime: TimeInterval = 0
 
-    public init() {
-        kokoroTTSEngine = KokoroTTS()
+    public init(weightsURL: URL? = nil) {
+        kokoroTTSEngine = KokoroTTS(customURL: weightsURL)
         setupAudioSystem()
     }
 

@@ -183,11 +183,20 @@ class LSTM: Module {
 
     let output = MLX.concatenated([forwardHidden, backwardHidden], axis: -1)
 
+    // Safely extract first/last timestep without negative indices
+    let timeAxis = forwardHidden.ndim - 2
+    let lastIdx = max(0, forwardHidden.shape[timeAxis] - 1)
+
+    let fHLast = forwardHidden[0..., lastIdx, 0...]
+    let fCLast = forwardCell[0..., lastIdx, 0...]
+    let bHFirst = backwardHidden[0..., 0, 0...]
+    let bCFirst = backwardCell[0..., 0, 0...]
+
     return (
       output,
       (
-        (forwardHidden[0..., -1, 0...], forwardCell[0..., -1, 0...]),
-        (backwardHidden[0..., 0, 0...], backwardCell[0..., 0, 0...])
+        (fHLast, fCLast),
+        (bHFirst, bCFirst)
       )
     )
   }

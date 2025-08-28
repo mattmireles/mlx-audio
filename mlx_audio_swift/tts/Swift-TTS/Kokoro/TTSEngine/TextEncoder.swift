@@ -25,8 +25,8 @@ class TextEncoder {
           padding: padding
         ),
         LayerNormInference(
-          weight: weights["text_encoder.cnn.\(i).1.gamma"]!,
-          bias: weights["text_encoder.cnn.\(i).1.beta"]!
+          weight: weights["text_encoder.cnn.\(i).1.gamma"] ?? weights["text_encoder.cnn.\(i).1.weight"]!,
+          bias: weights["text_encoder.cnn.\(i).1.beta"] ?? weights["text_encoder.cnn.\(i).1.bias"]
         ),
         actv,
       ])
@@ -38,12 +38,12 @@ class TextEncoder {
       hiddenSize: channels / 2,
       wxForward: weights["text_encoder.lstm.weight_ih_l0"]!,
       whForward: weights["text_encoder.lstm.weight_hh_l0"]!,
-      biasIhForward: weights["text_encoder.lstm.bias_ih_l0"]!,
-      biasHhForward: weights["text_encoder.lstm.bias_hh_l0"]!,
+      biasIhForward: weights["text_encoder.lstm.bias_ih_l0"],
+      biasHhForward: weights["text_encoder.lstm.bias_hh_l0"],
       wxBackward: weights["text_encoder.lstm.weight_ih_l0_reverse"]!,
       whBackward: weights["text_encoder.lstm.weight_hh_l0_reverse"]!,
-      biasIhBackward: weights["text_encoder.lstm.bias_ih_l0_reverse"]!,
-      biasHhBackward: weights["text_encoder.lstm.bias_hh_l0_reverse"]!
+      biasIhBackward: weights["text_encoder.lstm.bias_ih_l0_reverse"],
+      biasHhBackward: weights["text_encoder.lstm.bias_hh_l0_reverse"]
     )
   }
 

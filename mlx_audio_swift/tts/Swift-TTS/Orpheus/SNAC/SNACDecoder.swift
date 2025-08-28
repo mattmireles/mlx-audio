@@ -93,14 +93,18 @@ class SNACDecoder {
     }
     
     static func loadWeights() -> [String: MLXArray] {
-        let filePath = Bundle.main.path(forResource: "snac_model", ofType: "safetensors")!
-        
-        if !FileManager.default.fileExists(atPath: filePath) {
-            fatalError("SNAC: Weights not found at \(filePath)")
+        #if SWIFT_PACKAGE
+        let url = Bundle.module.url(forResource: "snac_model", withExtension: "safetensors")
+        #else
+        let url = Bundle.main.url(forResource: "snac_model", withExtension: "safetensors")
+        #endif
+        guard let fileURL = url else {
+            print("SNAC: Weights 'snac_model.safetensors' not found in bundle")
+            return [:]
         }
         
         do {
-            let weights = try MLX.loadArrays(url: URL(fileURLWithPath: filePath))
+            let weights = try MLX.loadArrays(url: fileURL)
 //            print("--- SNAC Weight Keys ---")
 //            for key in weights.keys.sorted() {
 //                let arr = weights[key]!
@@ -115,8 +119,13 @@ class SNACDecoder {
     }
     
     static func loadConfig() -> SNACConfig? {
-        guard let filePath = Bundle.main.path(forResource: "snac_config", ofType: "json"),
-              let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
+        #if SWIFT_PACKAGE
+        let url = Bundle.module.url(forResource: "snac_config", withExtension: "json")
+        #else
+        let url = Bundle.main.url(forResource: "snac_config", withExtension: "json")
+        #endif
+        guard let fileURL = url,
+              let data = try? Data(contentsOf: fileURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("SNAC: Config not found or invalid")
             return nil

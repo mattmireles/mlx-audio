@@ -191,7 +191,19 @@ final class KokoroTokenizer {
 
     /// Helper method to load a single lexicon file
     private func loadLexiconFile(_ filename: String) -> [String: String]? {
-        guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
+        #if SWIFT_PACKAGE
+        var bundleURL = Bundle.module.url(forResource: filename, withExtension: "json")
+        #else
+        var bundleURL = Bundle.main.url(forResource: filename, withExtension: "json")
+        #endif
+        // Fallback to look in app resource directory if not in bundle listings yet
+        if bundleURL == nil {
+            let fallbackPath = (Bundle.main.resourcePath ?? "") + "/" + filename + ".json"
+            if FileManager.default.fileExists(atPath: fallbackPath) {
+                bundleURL = URL(fileURLWithPath: fallbackPath)
+            }
+        }
+        guard let url = bundleURL,
               let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("Failed to load lexicon file: \(filename).json")

@@ -15,9 +15,15 @@ class VoiceLoader {
 
   static func loadVoice(_ voice: TTSVoice) -> MLXArray {
     let (file, ext) = Constants.voiceFiles[voice]!
-    let filePath = Bundle.main.path(forResource: file, ofType: ext)!
-      print(filePath)
-    return try! read3DArrayFromJson(file: filePath, shape: [510, 1, 256])!
+    #if SWIFT_PACKAGE
+    let url = Bundle.module.url(forResource: file, withExtension: ext)
+    #else
+    let url = Bundle.main.url(forResource: file, withExtension: ext)
+    #endif
+    guard let voiceURL = url else {
+      fatalError("Voice resource \(file).\(ext) not found in bundle")
+    }
+    return try! read3DArrayFromJson(file: voiceURL.path, shape: [510, 1, 256])!
   }
 
   private static func read3DArrayFromJson(file: String, shape: [Int]) throws -> MLXArray? {

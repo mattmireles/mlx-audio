@@ -141,8 +141,14 @@ public class KokoroTTS {
       kokoroTokenizer = KokoroTokenizer(engine: eSpeakEngine)
     }
 
-    autoreleasepool {
+    try autoreleasepool {
       let sanitizedWeights = KokoroWeightLoader.loadWeights(url: self.customURL)
+
+      // Validate weights before constructing layers to avoid crashes
+      guard !sanitizedWeights.isEmpty else {
+        print("Kokoro: No weights loaded. Ensure 'kokoro-v1_0.safetensors' is bundled or pass a valid customURL.")
+        throw KokoroTTSError.modelNotInitialized
+      }
 
       bert = CustomAlbert(weights: sanitizedWeights, config: AlbertModelArgs())
       bertEncoder = Linear(weight: sanitizedWeights["bert_encoder.weight"]!, bias: sanitizedWeights["bert_encoder.bias"]!)
@@ -249,22 +255,15 @@ public class KokoroTTS {
             _ = bertDur
           }
 
-          var refS: MLXArray
-          do {
-            guard let voice = voice else {
-              throw KokoroTTSError.modelNotInitialized
-            }
-            refS = voice[min(inputIds.count - 1, voice.shape[0] - 1), 0 ... 1, 0...]
-          } catch {
-            // Use a fallback slice from start of the voice array
-            guard let voice = voice else {
-              throw KokoroTTSError.modelNotInitialized
-            }
-            refS = voice[0, 0 ... 1, 0...]
+          guard let voice = voice else {
+            throw KokoroTTSError.modelNotInitialized
           }
+          let timeIdx = max(0, min(inputIds.count - 1, voice.shape[0] - 1))
+          let channelEnd = max(0, min(1, voice.shape[1] - 1))
+          var refS = voice[timeIdx, 0 ... channelEnd, 0...]
           refS.eval()
 
-          let s = refS[0 ... 1, 128...]
+          let s = refS[0 ... channelEnd, 128...]
           s.eval()
 
           return try autoreleasepool { () -> MLXArray in
@@ -457,7 +456,7 @@ public class KokoroTTS {
                 _ = predAlnTrg
               }
 
-              let voiceS = refS[0 ... 1, 0 ... 127]
+              let voiceS = refS[0 ... channelEnd, 0 ... 127]
               voiceS.eval()
 
               autoreleasepool {

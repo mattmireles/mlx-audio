@@ -38,15 +38,20 @@ public class OrpheusTokenizer {
     }
     
     public init() throws {
-        // Hey you - put tokenizer config file in Orpheus/Resources folder
-        let filePath = Bundle.main.path(forResource: "tokenizer_config", ofType: "json")!        
-        if !FileManager.default.fileExists(atPath: filePath) {
-            fatalError("Orpheus: Tokenizer at \(filePath)")
+        // Locate tokenizer config from the correct bundle (SwiftPM or app)
+        #if SWIFT_PACKAGE
+        let tokenizerConfigURL = Bundle.module.url(forResource: "tokenizer_config", withExtension: "json")
+        let tokenizerURL = Bundle.module.url(forResource: "tokenizer", withExtension: "json")
+        #else
+        let tokenizerConfigURL = Bundle.main.url(forResource: "tokenizer_config", withExtension: "json")
+        let tokenizerURL = Bundle.main.url(forResource: "tokenizer", withExtension: "json")
+        #endif
+        guard let configURL = tokenizerConfigURL, let tokURL = tokenizerURL else {
+            throw TokenizerError.configNotFound
         }
         
         // Load tokenizer configuration
-        guard let configPath = Bundle.main.path(forResource: "tokenizer_config", ofType: "json"),
-              let configData = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
+        guard let configData = try? Data(contentsOf: configURL),
               let config = try? JSONSerialization.jsonObject(with: configData) as? [String: Any] else {
             throw TokenizerError.configNotFound
         }
@@ -58,8 +63,7 @@ public class OrpheusTokenizer {
         unkToken = config["unk_token"] as? String
         
         // Load vocabulary and merges from tokenizer.json
-        guard let tokenizerPath = Bundle.main.path(forResource: "tokenizer", ofType: "json"),
-              let tokenizerData = try? Data(contentsOf: URL(fileURLWithPath: tokenizerPath)),
+        guard let tokenizerData = try? Data(contentsOf: tokURL),
               let tokenizerDict = try? JSONSerialization.jsonObject(with: tokenizerData) as? [String: Any],
               let model = tokenizerDict["model"] as? [String: Any],
               let vocabDict = model["vocab"] as? [String: Int],

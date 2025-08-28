@@ -18,12 +18,12 @@ class DurationEncoder {
                hiddenSize: dModel / 2,
                wxForward: weights["predictor.text_encoder.lstms.\(i).weight_ih_l0"]!,
                whForward: weights["predictor.text_encoder.lstms.\(i).weight_hh_l0"]!,
-               biasIhForward: weights["predictor.text_encoder.lstms.\(i).bias_ih_l0"]!,
-               biasHhForward: weights["predictor.text_encoder.lstms.\(i).bias_hh_l0"]!,
+               biasIhForward: weights["predictor.text_encoder.lstms.\(i).bias_ih_l0"],
+               biasHhForward: weights["predictor.text_encoder.lstms.\(i).bias_hh_l0"],
                wxBackward: weights["predictor.text_encoder.lstms.\(i).weight_ih_l0_reverse"]!,
                whBackward: weights["predictor.text_encoder.lstms.\(i).weight_hh_l0_reverse"]!,
-               biasIhBackward: weights["predictor.text_encoder.lstms.\(i).bias_ih_l0_reverse"]!,
-               biasHhBackward: weights["predictor.text_encoder.lstms.\(i).bias_hh_l0_reverse"]!)
+               biasIhBackward: weights["predictor.text_encoder.lstms.\(i).bias_ih_l0_reverse"],
+               biasHhBackward: weights["predictor.text_encoder.lstms.\(i).bias_hh_l0_reverse"]) 
         )
       } else {
         lstms.append(AdaLayerNorm(weight: weights["predictor.text_encoder.lstms.\(i).fc.weight"]!,

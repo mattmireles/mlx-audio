@@ -10,10 +10,18 @@ class OrpheusWeightLoader {
     private init() {}
     
     static func loadWeights(url: URL? = nil) -> [String: MLXArray] {
-        let modelURL = url ?? {
-            let filePath = Bundle.main.path(forResource: "orpheus-3b-0.1-ft-4bit", ofType: "safetensors")!
-            return URL(fileURLWithPath: filePath)
+        let resolvedURL: URL? = {
+            if let explicitURL = url { return explicitURL }
+            #if SWIFT_PACKAGE
+            return Bundle.module.url(forResource: "orpheus-3b-0.1-ft-4bit", withExtension: "safetensors")
+            #else
+            return Bundle.main.url(forResource: "orpheus-3b-0.1-ft-4bit", withExtension: "safetensors")
+            #endif
         }()
+        guard let modelURL = resolvedURL else {
+            print("Orpheus: Weights file 'orpheus-3b-0.1-ft-4bit.safetensors' not found in bundle. Provide a custom URL or add the file to package resources.")
+            return [:]
+        }
         
         do {
             let weights = try MLX.loadArrays(url: modelURL)

@@ -14,17 +14,21 @@ class ProsodyPredictor {
   let NProj: Conv1dInference
 
   public init(weights: [String: MLXArray], styleDim: Int, dHid: Int) {
+    func pick(_ keys: [String]) -> MLXArray? {
+      for k in keys { if let v = weights[k] { return v } }
+      return nil
+    }
     shared = LSTM(
       inputSize: dHid + styleDim,
       hiddenSize: dHid / 2,
-      wxForward: weights["predictor.shared.weight_ih_l0"]!,
-      whForward: weights["predictor.shared.weight_hh_l0"]!,
-      biasIhForward: weights["predictor.shared.bias_ih_l0"]!,
-      biasHhForward: weights["predictor.shared.bias_hh_l0"]!,
-      wxBackward: weights["predictor.shared.weight_ih_l0_reverse"]!,
-      whBackward: weights["predictor.shared.weight_hh_l0_reverse"]!,
-      biasIhBackward: weights["predictor.shared.bias_ih_l0_reverse"]!,
-      biasHhBackward: weights["predictor.shared.bias_hh_l0_reverse"]!
+      wxForward: pick(["predictor.shared.weight_ih_l0", "predictor.shared.Wx_forward"])!,
+      whForward: pick(["predictor.shared.weight_hh_l0", "predictor.shared.Wh_forward"])!,
+      biasIhForward: pick(["predictor.shared.bias_ih_l0", "predictor.shared.bias_ih_forward"]),
+      biasHhForward: pick(["predictor.shared.bias_hh_l0", "predictor.shared.bias_hh_forward"]),
+      wxBackward: pick(["predictor.shared.weight_ih_l0_reverse", "predictor.shared.Wx_backward"])!,
+      whBackward: pick(["predictor.shared.weight_hh_l0_reverse", "predictor.shared.Wh_backward"])!,
+      biasIhBackward: pick(["predictor.shared.bias_ih_l0_reverse", "predictor.shared.bias_ih_backward"]),
+      biasHhBackward: pick(["predictor.shared.bias_hh_l0_reverse", "predictor.shared.bias_hh_backward"])
     )
 
     F0 = [
@@ -44,8 +48,8 @@ class ProsodyPredictor {
       outputChannels: 1,
       kernelSize: 1,
       padding: 0,
-      weight: weights["predictor.F0_proj.weight"]!,
-      bias: weights["predictor.F0_proj.bias"]!
+      weight: pick(["predictor.F0_proj.weight", "predictor.F0_proj.linear_layer.weight"])!,
+      bias: pick(["predictor.F0_proj.bias", "predictor.F0_proj.linear_layer.bias"])!
     )
 
     NProj = Conv1dInference(
@@ -53,8 +57,8 @@ class ProsodyPredictor {
       outputChannels: 1,
       kernelSize: 1,
       padding: 0,
-      weight: weights["predictor.N_proj.weight"]!,
-      bias: weights["predictor.N_proj.bias"]!
+      weight: pick(["predictor.N_proj.weight", "predictor.N_proj.linear_layer.weight"])!,
+      bias: pick(["predictor.N_proj.bias", "predictor.N_proj.linear_layer.bias"])!
     )
   }
 
