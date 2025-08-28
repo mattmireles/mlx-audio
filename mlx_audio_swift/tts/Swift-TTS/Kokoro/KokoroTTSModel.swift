@@ -53,6 +53,7 @@ public class KokoroTTSModel: ObservableObject {
                         }
                     }
                 }
+            )
             }
         }
     }
