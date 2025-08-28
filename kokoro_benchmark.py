@@ -231,10 +231,11 @@ class KokoroBenchmark:
         # Measure generation time
         print("🎵 Generating audio...")
         
-        # Clear memory cache before inference
+        # Clear memory cache and reset peak memory before inference
         mx.clear_cache()
+        mx.reset_peak_memory()
         
-        # Get peak memory using non-deprecated API
+        # Capture baseline (not used further; peak is process-wide since reset)
         memory_before = mx.get_peak_memory() / (1024**3)  # Convert to GB
         
         start_time = time.perf_counter()
@@ -270,7 +271,7 @@ class KokoroBenchmark:
         inference_time = time.perf_counter() - start_time
         time_to_first_audio = time_to_first_audio or inference_time
         
-        # Get peak memory after inference
+        # Get peak memory after inference (per-model, thanks to reset above)
         memory_after = mx.get_peak_memory() / (1024**3)  # Convert to GB
         peak_memory = memory_after
         
