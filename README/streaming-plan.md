@@ -14,28 +14,28 @@ This plan outlines a refactoring to a unified, stream-based approach that proces
 
 The core idea is to introduce a single, robust sentence-splitting mechanism at the entry point of the pipeline. This becomes the primary method for chunking text for all languages, ensuring a consistent and efficient processing flow.
 
-#### 1. Unify Text Splitting in `KokoroPipeline.__call__`
+#### Step 1. Unify Text Splitting in `KokoroPipeline.__call__`
 
 -   **Action:** Modify the `__call__` method in `mlx_audio/tts/models/kokoro/pipeline.py`.
 -   **Details:**
-    -   Replace the current `re.split(split_pattern, ...)` logic with a more intelligent sentence tokenizer. A regex like `(?<=[.!?])\s+` will be used to split text after sentence-ending punctuation, preserving the punctuation. This provides a much more natural chunking of the input text.
-    -   This new splitter will become the default behavior, making the `split_pattern` argument obsolete for most use cases, though we can keep it for backward compatibility if needed.
+    -   Replace the current `re.split(split_pattern, ...)` logic with a more intelligent sentence tokenizer. A more robust regex like `r'(?<=[.!?])\s+(?=[A-Z])|(?<=Dr\.)\s+|\n\n'` will be used to split text more reliably, handling abbreviations and using paragraph breaks as explicit chunks.
+    -   This new splitter will become the default behavior. The `split_pattern` argument will be deprecated or removed to simplify the API.
 
-#### 2. Simplify the Main Processing Loop
+#### Step 2. Simplify the Main Processing Loop
 
 -   **Action:** Refactor the main `for` loop within `__call__`.
 -   **Details:**
     -   The loop will now iterate over sentences yielded by the new, unified splitter.
     -   The separate, complex logic paths for English (`if self.lang_code in "ab":`) versus non-English languages will be removed. All sentences, regardless of language, will be passed through the same processing path (G2P -> phoneme conversion -> inference).
 
-#### 3. Refactor and Simplify `en_tokenize`
+#### Step 3. Refactor and Simplify `en_tokenize`
 
 -   **Action:** Adjust the responsibility of the `en_tokenize` method.
 -   **Details:**
-    -   The primary chunking logic based on the 510-phoneme limit will be removed from this method. Since the pipeline now processes one sentence at a time, `en_tokenize`'s role changes from a primary chunker to a **safeguard**.
-    -   Its only responsibility will be to check if a *single sentence* is too long. If it is, it will perform a hard split (e.g., at a comma or halfway point) and log a warning. This should be a rare edge case for exceptionally long sentences.
+    -   The primary chunking logic based on the 510-phoneme limit will be removed from this method. Since the pipeline now processes one sentence at a time, `en_tokenize`'s role changes from a primary chunker to a **safeguard for pathological cases**.
+    -   Its only responsibility will be to check if a *single sentence* is too long (e.g., > 400 phonemes). If it is, it will perform a "dumb split" at the nearest comma or a hard character limit and log a warning. This prevents stalls on rare, extremely long sentences.
 
-#### 4. Remove Redundant Code
+#### Step 4. Remove Redundant Code
 
 -   **Action:** Delete the now-obsolete chunking logic for non-English languages.
 -   **Details:** The entire `else` block (lines ~405-436) that handles manual chunking for non-English text becomes redundant and will be removed. The new sentence splitter at the beginning of `__call__` handles this for all languages.
