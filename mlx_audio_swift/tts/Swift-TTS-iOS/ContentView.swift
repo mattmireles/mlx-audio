@@ -7,6 +7,8 @@
 
 import SwiftUI
 import MLX
+import Darwin
+import Darwin.Mach
 
 struct ContentView: View {
     @State private var speed = 1.0
@@ -16,6 +18,7 @@ struct ContentView: View {
     @FocusState private var isTextEditorFocused: Bool
     @ObservedObject var viewModel: KokoroTTSModel
     @StateObject private var speakerModel = SpeakerViewModel()
+    @State private var showBenchmark = false
     
     var body: some View {
         NavigationStack {
@@ -53,6 +56,9 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Benchmark") { showBenchmark = true }
+                    }
                 }
                 .scrollContentBackground(.hidden)
                 .alert("Empty Text", isPresented: $showAlert) {
@@ -68,6 +74,9 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showBenchmark) {
+            BenchmarkView(ttsModel: viewModel)
         }
         // Sync viewModel.generationInProgress to speakerModel.isGenerating
         .onChange(of: viewModel.generationInProgress) { _, newValue in
@@ -228,6 +237,206 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, minHeight: 44)
             .tint(.red)
             .disabled(!viewModel.isAudioPlaying)
+        }
+    }
+}
+
+// MARK: - Benchmarking types and view (embedded)
+
+struct BenchmarkResult: Codable {
+    let modelName: String
+    let modelDescription: String
+    let text: String
+    let voice: String
+    let modelLoadTime: Double
+    let inferenceTime: Double
+    let totalTime: Double
+    let timeToFirstAudio: Double
+    let perSentenceInference: [Double]
+    let audioDuration: Double
+    let realTimeFactor: Double
+    let samplesPerSec: Double
+    let peakMemoryGB: Double
+    let sampleRate: Int
+}
+
+final class Stopwatch {
+    private var startTime: DispatchTime?
+    func start() { startTime = DispatchTime.now() }
+    func elapsed() -> Double {
+        guard let s = startTime else { return 0 }
+        let ns = DispatchTime.now().uptimeNanoseconds &- s.uptimeNanoseconds
+        return Double(ns) / 1_000_000_000.0
+    }
+}
+
+final class MemorySampler {
+    private var timer: Timer?
+    private(set) var peakGB: Double = 0
+
+    func start(intervalSec: TimeInterval = 0.2) {
+        stop()
+        peakGB = 0
+        DispatchQueue.main.async {
+            self.timer = Timer.scheduledTimer(withTimeInterval: intervalSec, repeats: true) { _ in
+                let rss = MemorySampler.currentResidentBytes()
+                self.peakGB = max(self.peakGB, Double(rss) / (1024.0 * 1024.0 * 1024.0))
+            }
+            if let t = self.timer { RunLoop.current.add(t, forMode: .common) }
+        }
+    }
+
+    func stop() { timer?.invalidate(); timer = nil }
+
+    private static func currentResidentBytes() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let kr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        return kr == KERN_SUCCESS ? info.resident_size : 0
+    }
+}
+
+final class AudioCollector {
+    private var totalSamples: Int = 0
+    private let sampleRate: Int
+    init(sampleRate: Int = 24_000) { self.sampleRate = sampleRate }
+    func append(_ audio: MLXArray) {
+        let shape = audio.shape
+        if shape.count == 1 { totalSamples += shape[0] }
+        else if shape.count == 2 { totalSamples += shape[1] }
+    }
+    func samples() -> Int { totalSamples }
+    func durationSeconds() -> Double { Double(totalSamples) / Double(sampleRate) }
+}
+
+struct BenchmarkView: View {
+    @ObservedObject var ttsModel: KokoroTTSModel
+
+    @State private var text: String = "The quick brown fox jumps over the lazy dog. This is a second sentence."
+    @State private var voice: TTSVoice = .afHeart
+    @State private var warmup: Bool = true
+    @State private var running: Bool = false
+    @State private var results: [BenchmarkResult] = []
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Input") {
+                    TextEditor(text: $text).frame(minHeight: 120)
+                    Picker("Voice", selection: $voice) {
+                        ForEach(TTSVoice.allCases, id: \.self) { v in
+                            Text(v.rawValue).tag(v)
+                        }
+                    }
+                    Toggle("Warm-up", isOn: $warmup)
+                    Button(running ? "Running…" : "Run Benchmark") { runOnce() }
+                        .disabled(running || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                if !results.isEmpty {
+                    Section("Results") {
+                        ForEach(Array(results.enumerated()), id: \.offset) { _, r in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(r.modelName) • \(r.voice)")
+                                Text(String(format: "TTFA %.2fs  |  Load %.2fs  |  Inference %.2fs", r.timeToFirstAudio, r.modelLoadTime, r.inferenceTime))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(String(format: "RTF %.2f  |  mem %.2f GB", r.realTimeFactor, r.peakMemoryGB))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Benchmark")
+        }
+    }
+
+    private func runOnce() {
+        running = true
+
+        let mem = MemorySampler(); mem.start()
+        let swLoad = Stopwatch()
+        let swInfer = Stopwatch()
+        let collector = AudioCollector(sampleRate: 24_000)
+        var perSentence: [Double] = []
+        var firstChunkTime: Double? = nil
+        var lastChunkTime: Double? = nil
+
+        // Optional warm-up
+        if warmup {
+            do { try ttsModel.withEngine { engine in try engine.initializeIfNeeded() } } catch {}
+            do { try ttsModel.withEngine { engine in try engine.generateAudio(voice: voice, text: "Hi.", completion: nil, chunkCallback: { _ in }) } } catch {}
+            MLX.GPU.clearCache()
+        }
+
+        // Model load timing
+        swLoad.start()
+        do { try ttsModel.withEngine { engine in try engine.initializeIfNeeded() } } catch {}
+        let modelLoad = swLoad.elapsed()
+
+        // Inference timing
+        swInfer.start()
+        do {
+            try ttsModel.withEngine { engine in
+                try engine.generateAudio(voice: voice, text: text, completion: {
+                    // Completion on main thread
+                    let inference = swInfer.elapsed()
+                    let audioDur = collector.durationSeconds()
+                    let rtf = audioDur > 0 ? inference / audioDur : 0
+                    let sps = inference > 0 ? Double(collector.samples()) / inference : 0
+                    let peak = mem.peakGB
+                    mem.stop()
+
+                    let result = BenchmarkResult(
+                        modelName: "kokoro_v1_0_bf16",
+                        modelDescription: "Kokoro 82M (bfloat16)",
+                        text: text,
+                        voice: voice.rawValue,
+                        modelLoadTime: modelLoad,
+                        inferenceTime: inference,
+                        totalTime: modelLoad + inference,
+                        timeToFirstAudio: firstChunkTime ?? 0,
+                        perSentenceInference: perSentence,
+                        audioDuration: audioDur,
+                        realTimeFactor: rtf,
+                        samplesPerSec: sps,
+                        peakMemoryGB: peak,
+                        sampleRate: 24_000
+                    )
+                    persist(results: [result])
+                    results.insert(result, at: 0)
+                    running = false
+                }, chunkCallback: { audio in
+                    let t = swInfer.elapsed()
+                    if firstChunkTime == nil { firstChunkTime = t }
+                    if let last = lastChunkTime { perSentence.append(t - last) }
+                    else { perSentence.append(t) }
+                    lastChunkTime = t
+                    collector.append(audio)
+                    ttsModel.enqueueAudioChunk(audio)
+                })
+            }
+        } catch {
+            mem.stop(); running = false
+        }
+    }
+
+    private func persist(results: [BenchmarkResult]) {
+        let fm = FileManager.default
+        do {
+            let docs = try fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let dir = docs.appendingPathComponent("benchmark_results", isDirectory: true)
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let ts = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            let file = dir.appendingPathComponent("benchmark_results_\(ts).json")
+            let data = try JSONEncoder().encode(results)
+            try data.write(to: file)
+        } catch {
+            // ignore persistence errors in UI
         }
     }
 }

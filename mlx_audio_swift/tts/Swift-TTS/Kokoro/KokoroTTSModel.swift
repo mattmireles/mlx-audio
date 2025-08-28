@@ -57,6 +57,20 @@ public class KokoroTTSModel: ObservableObject {
         }
     }
 
+    // MARK: - Benchmarking helpers
+
+    /// Returns the underlying engine for benchmark orchestration (read-only use).
+    public func withEngine<T>(_ body: (KokoroTTS) throws -> T) rethrows -> T {
+        return try body(kokoroTTSEngine)
+    }
+
+    /// Enqueue a precomputed audio chunk for playback (benchmark use).
+    public func enqueueAudioChunk(_ audio: MLXArray) {
+        DispatchQueue.main.async {
+            self.playAudioChunk(audio)
+        }
+    }
+
     @Published public var audioGenerationTime: TimeInterval = 0
 
     public init(weightsURL: URL? = nil) {
@@ -321,11 +335,12 @@ public class KokoroTTSModel: ObservableObject {
 
         do {
             // Use streaming by sentence approach
-            try kokoroTTSEngine.generateAudio(
+                try kokoroTTSEngine.generateAudio(
                 voice: voice,
                 text: text,
-                speed: speed
-            ) { [weak self] audioBuffer in
+                speed: speed,
+                completion: nil,
+                chunkCallback: { [weak self] audioBuffer in
                 guard let self = self else { return }
 
                 // Mark that we've received at least one chunk

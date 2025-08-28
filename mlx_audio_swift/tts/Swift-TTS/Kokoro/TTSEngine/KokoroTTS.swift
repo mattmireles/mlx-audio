@@ -204,6 +204,12 @@ public class KokoroTTS {
     isModelInitialized = true
   }
 
+  /// Public helper for benchmarking to trigger model initialization and measure load time
+  /// without starting any audio generation.
+  public func initializeIfNeeded() throws {
+    try ensureModelInitialized()
+  }
+
   private func generateAudioForTokens(
     inputIds: [Int],
     speed: Float
@@ -513,7 +519,13 @@ public class KokoroTTS {
     }
   }
 
-  public func generateAudio(voice: TTSVoice, text: String, speed: Float = 1.0, chunkCallback: @escaping AudioChunkCallback) throws {
+  public func generateAudio(
+    voice: TTSVoice,
+    text: String,
+    speed: Float = 1.0,
+    completion: (() -> Void)? = nil,
+    chunkCallback: @escaping AudioChunkCallback
+  ) throws {
     try ensureModelInitialized()
 
     let sentences = SentenceTokenizer.splitIntoSentences(text: text)
@@ -552,11 +564,16 @@ public class KokoroTTS {
         MLX.GPU.clearCache()
       }
 
-      // Reset model after completing a long text to free memory
+      // Reset model after completing a long text to free memory (optional)
       if sentences.count > 5 {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
           self.resetModel()
         }
+      }
+
+      // Notify completion on main thread
+      if let completion = completion {
+        DispatchQueue.main.async { completion() }
       }
     }
   }
