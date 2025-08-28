@@ -93,8 +93,8 @@ public class KokoroTTSModel: ObservableObject {
     /// Switch the underlying model weights at runtime (e.g., bf16 vs 8-bit).
     /// Safely resets the current model and instantiates a new engine with the provided URL.
     public func switchModel(weightsURL: URL?) {
-        // Stop any playback/generation and reset state
-        stopPlayback()
+        // Disallow switching while generating; stop first
+        if isGenerating { return }
 
         // Reset and swap engine
         kokoroTTSEngine.resetModel(preserveTextProcessing: false)

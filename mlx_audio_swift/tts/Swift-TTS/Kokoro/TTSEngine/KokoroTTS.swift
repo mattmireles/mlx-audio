@@ -210,6 +210,55 @@ public class KokoroTTS {
     try ensureModelInitialized()
   }
 
+  // MARK: - Safe style splitting
+  /// Safely split reference style tensor into decoder half (first 128) and conditioning half (last 128).
+  /// Always returns fixed [channels, 128] for each half, padding/truncating as needed.
+  private func splitStyle(refS: MLXArray) -> (voiceS: MLXArray, condS: MLXArray) {
+    // refS expected shape: [channels, features]
+    let channels = max(1, refS.shape.count > 0 ? refS.shape[0] : 1)
+    let feats = refS.shape.count > 1 ? refS.shape[1] : 0
+
+    // Fast paths: empty features
+    if feats <= 0 {
+      let zero = MLXArray.zeros([channels, 128])
+      return (zero, zero)
+    }
+
+    // Slice available portions with explicit closed ranges
+    let voiceCount = min(128, feats)
+    let condCount = feats > 128 ? min(128, feats - 128) : 0
+
+    // First half [0 ..< voiceCount]
+    var voicePart = refS[0 ... (channels - 1), 0 ... (voiceCount - 1)]
+    voicePart.eval()
+
+    // Second half [128 ..< 128+condCount], if any
+    var condPart: MLXArray
+    if condCount > 0 {
+      condPart = refS[0 ... (channels - 1), 128 ... (128 + condCount - 1)]
+      condPart.eval()
+    } else {
+      condPart = MLXArray.zeros([channels, 0])
+    }
+
+    // Pad to 128 columns each if needed
+    if voiceCount < 128 {
+      let pad = MLXArray.zeros([channels, 128 - voiceCount])
+      voicePart = MLX.concatenated([voicePart, pad], axis: 1)
+    } else if voiceCount > 128 {
+      voicePart = voicePart[0 ... (channels - 1), 0 ... 127]
+    }
+
+    if condCount < 128 {
+      let pad = MLXArray.zeros([channels, 128 - condCount])
+      condPart = condCount > 0 ? MLX.concatenated([condPart, pad], axis: 1) : pad
+    } else if condCount > 128 {
+      condPart = condPart[0 ... (channels - 1), 0 ... 127]
+    }
+
+    return (voicePart, condPart)
+  }
+
   private func generateAudioForTokens(
     inputIds: [Int],
     speed: Float
@@ -268,16 +317,51 @@ public class KokoroTTS {
           // Clamp channel and feature ranges defensively to avoid invalid ranges
           let channelsMaxIndex = max(0, voice.shape[1] - 1)
           let channelEnd = min(1, channelsMaxIndex)
-          let lastDim = max(0, voice.shape[2])
-          // Split index for decoder vs conditioning halves of style vector
-          let split = min(128, lastDim)
-          let decUpper = max(0, min(127, lastDim - 1))
+          let feats = max(0, voice.shape[2])
+          // Explicit last index for features; bail out to zeros if none
+          if feats == 0 {
+            // Produce zeros and continue with empty style
+            let zero = MLXArray.zeros([channelEnd + 1, 128])
+            let s = zero
+            return try autoreleasepool { () -> MLXArray in
+              // Ensure components are initialized
+              guard let durationEncoder = durationEncoder,
+                    let predictorLSTM = predictorLSTM,
+                    let durationProj = durationProj else {
+                throw KokoroTTSError.modelNotInitialized
+              }
+              // Minimal safe flow (rare path)
+              let d = durationEncoder(dEn, style: s, textLengths: inputLengths, m: textMask)
+              d.eval()
+              let (x, _) = predictorLSTM(d)
+              x.eval()
+              let duration = durationProj(x)
+              duration.eval()
+              let durationSigmoid = MLX.sigmoid(duration).sum(axis: -1) / speed
+              durationSigmoid.eval()
+              let predDur = MLX.clip(durationSigmoid.round(), min: 1).asType(.int32)[0]
+              predDur.eval()
+              let indices = MLXArray.zeros([1])
+              indices.eval()
+              let predAlnTrg = MLXArray.zeros([paddedInputIds.shape[1], 1])
+              predAlnTrg.eval()
+              let en = d.transposed(0, 2, 1).matmul(predAlnTrg)
+              en.eval()
+              let tEn = textEncoder(paddedInputIds, inputLengths: inputLengths, m: textMask)
+              tEn.eval()
+              let asr = MLX.matmul(tEn, predAlnTrg)
+              asr.eval()
+              let audio = decoder(asr: asr, F0Curve: MLXArray.zeros([1,1]), N: MLXArray.zeros([1,1]), s: s)[0]
+              audio.eval()
+              return audio
+            }
+          }
 
-          let refS = voice[timeIdx, 0 ... channelEnd, 0...]
+          let refS = voice[timeIdx, 0 ... channelEnd, 0 ... (feats - 1)]
           refS.eval()
 
-          // Conditioning half (128..end), guarded
-          let s = refS[0 ... channelEnd, split...]
+          // Split safely into (decoder half, conditioning half)
+          let (voiceS, s) = splitStyle(refS: refS)
           s.eval()
 
           return try autoreleasepool { () -> MLXArray in
@@ -470,8 +554,6 @@ public class KokoroTTS {
                 _ = predAlnTrg
               }
 
-              // Decoder half (0..127), guarded
-              let voiceS = refS[0 ... channelEnd, 0 ... decUpper]
               voiceS.eval()
 
               autoreleasepool {
