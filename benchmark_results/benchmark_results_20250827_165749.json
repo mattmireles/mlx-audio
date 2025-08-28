@@ -1,0 +1,98 @@
+[
+  {
+    "model_name": "mlx-community/Kokoro-82M-bf16",
+    "model_description": "Kokoro 82M (bfloat16 - Full Precision)",
+    "text": "Still, even though erosion is natural, primeval and inevitable, there is now a general feeling of acceleration among locals and experts, and only partly because of the media attention drawn to the area ahead of the 2026 Winter Olympics. \"Every mountain guide will tell you that, in fact, you feel like you are walking on something much more fragile than before,\" says Crosta. The radiator effect. Crosta's team looks at the correlation between landslides and other events\u00a0such as heavy rains, which are among the most common triggers of landslides. \"We can see a concerning increase of intense, short rainfalls,\" says Eleonora Dallan, assistant professor of environmental engineering at the University of Padua. Extreme rainfall events are set to become more frequent. Specifically,\u00a0Dallan has found\u00a0the maximum precipitation values have grown by 5-20% in the past 30-40 years.",
+    "voice": "am_onyx",
+    "model_load_time": 0.44982149999123067,
+    "inference_time": 9.061426375003066,
+    "total_time": 9.511247874994297,
+    "time_to_first_audio": 2.9033495420007966,
+    "per_sentence_inference": [
+      2.9033257919945754,
+      1.1948039999697357,
+      0.5989931669901125,
+      1.365217125043273,
+      1.211319290974643,
+      0.5614601250272244,
+      1.2262452919967473
+    ],
+    "audio_duration": 55.35,
+    "real_time_factor": 0.16371140695579162,
+    "samples_per_sec": 146599.4364490492,
+    "peak_memory_gb": 2.1003166511654854,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-8bit",
+    "model_description": "Kokoro 82M (8-bit Quantized)",
+    "text": "Still, even though erosion is natural, primeval and inevitable, there is now a general feeling of acceleration among locals and experts, and only partly because of the media attention drawn to the area ahead of the 2026 Winter Olympics. \"Every mountain guide will tell you that, in fact, you feel like you are walking on something much more fragile than before,\" says Crosta. The radiator effect. Crosta's team looks at the correlation between landslides and other events\u00a0such as heavy rains, which are among the most common triggers of landslides. \"We can see a concerning increase of intense, short rainfalls,\" says Eleonora Dallan, assistant professor of environmental engineering at the University of Padua. Extreme rainfall events are set to become more frequent. Specifically,\u00a0Dallan has found\u00a0the maximum precipitation values have grown by 5-20% in the past 30-40 years.",
+    "voice": "am_onyx",
+    "model_load_time": 0.30565916700288653,
+    "inference_time": 8.92742179200286,
+    "total_time": 9.233080959005747,
+    "time_to_first_audio": 2.8453240420203656,
+    "per_sentence_inference": [
+      2.8452990420046262,
+      0.9767323330161162,
+      0.27691191696794704,
+      1.8558622910059057,
+      1.3527206670260057,
+      0.5787234579911456,
+      1.0411135840113275
+    ],
+    "audio_duration": 55.375,
+    "real_time_factor": 0.16121754929124804,
+    "samples_per_sec": 148867.16803170557,
+    "peak_memory_gb": 2.3708160556852818,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-6bit",
+    "model_description": "Kokoro 82M (6-bit Quantized)",
+    "text": "Still, even though erosion is natural, primeval and inevitable, there is now a general feeling of acceleration among locals and experts, and only partly because of the media attention drawn to the area ahead of the 2026 Winter Olympics. \"Every mountain guide will tell you that, in fact, you feel like you are walking on something much more fragile than before,\" says Crosta. The radiator effect. Crosta's team looks at the correlation between landslides and other events\u00a0such as heavy rains, which are among the most common triggers of landslides. \"We can see a concerning increase of intense, short rainfalls,\" says Eleonora Dallan, assistant professor of environmental engineering at the University of Padua. Extreme rainfall events are set to become more frequent. Specifically,\u00a0Dallan has found\u00a0the maximum precipitation values have grown by 5-20% in the past 30-40 years.",
+    "voice": "am_onyx",
+    "model_load_time": 0.3097954170079902,
+    "inference_time": 9.099178749951534,
+    "total_time": 9.408974166959524,
+    "time_to_first_audio": 3.021427749947179,
+    "per_sentence_inference": [
+      3.021330624993425,
+      0.9749499590252526,
+      0.273033540986944,
+      1.4165565840085037,
+      1.4555919580161572,
+      0.700628417020198,
+      1.2569382499787025
+    ],
+    "audio_duration": 55.2,
+    "real_time_factor": 0.1648401947454988,
+    "samples_per_sec": 145595.5571822409,
+    "peak_memory_gb": 2.6412749476730824,
+    "sample_rate": 24000
+  },
+  {
+    "model_name": "mlx-community/Kokoro-82M-4bit",
+    "model_description": "Kokoro 82M (4-bit Quantized)",
+    "text": "Still, even though erosion is natural, primeval and inevitable, there is now a general feeling of acceleration among locals and experts, and only partly because of the media attention drawn to the area ahead of the 2026 Winter Olympics. \"Every mountain guide will tell you that, in fact, you feel like you are walking on something much more fragile than before,\" says Crosta. The radiator effect. Crosta's team looks at the correlation between landslides and other events\u00a0such as heavy rains, which are among the most common triggers of landslides. \"We can see a concerning increase of intense, short rainfalls,\" says Eleonora Dallan, assistant professor of environmental engineering at the University of Padua. Extreme rainfall events are set to become more frequent. Specifically,\u00a0Dallan has found\u00a0the maximum precipitation values have grown by 5-20% in the past 30-40 years.",
+    "voice": "am_onyx",
+    "model_load_time": 0.2560242500039749,
+    "inference_time": 8.782005207962357,
+    "total_time": 9.038029457966331,
+    "time_to_first_audio": 2.970466792001389,
+    "per_sentence_inference": [
+      2.9704443750088103,
+      0.9729449999867938,
+      0.3374514579772949,
+      1.4501115420134738,
+      1.2689622080069967,
+      0.7471183749730699,
+      1.0349097920116037
+    ],
+    "audio_duration": 55.7,
+    "real_time_factor": 0.157666161722843,
+    "samples_per_sec": 152220.36065157046,
+    "peak_memory_gb": 2.930028848350048,
+    "sample_rate": 24000
+  }
+]

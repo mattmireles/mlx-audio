@@ -14,6 +14,7 @@ A text-to-speech (TTS) and Speech-to-Speech (STS) library built on Apple's MLX f
 - **Interactive web interface** with 3D audio visualization
 - **REST API** for TTS generation
 - **Benchmarking tools** for performance analysis and model comparison
+- **Streaming-first pipeline**: sentence-by-sentence generation with fast TTFA
 - **Speech-to-text** support with Voxtral and other STT models
 - **Direct file access** via Finder/Explorer integration
 
@@ -185,9 +186,9 @@ model = load_model(model_id)
 # Create a pipeline with American English
 pipeline = KokoroPipeline(lang_code='a', model=model, repo_id=model_id)
 
-# Generate audio
+# Generate audio (streams sentence-by-sentence)
 text = "The MLX King lives. Let him cook!"
-for _, _, audio in pipeline(text, voice='af_heart', speed=1, split_pattern=r'\n+'):
+for _, _, audio in pipeline(text, voice='af_heart', speed=1):
     # Display audio in notebook (if applicable)
     display(Audio(data=audio, rate=24000, autoplay=0))
 
@@ -304,7 +305,7 @@ The benchmarking tool provides detailed performance analysis including timing, m
 #### Usage
 
 ```bash
-# Run the interactive benchmark tool
+# Run the interactive benchmark tool (streams audio during inference)
 python kokoro_benchmark.py
 
 # The tool will guide you through:
@@ -316,7 +317,7 @@ python kokoro_benchmark.py
 
 #### Features
 
-- **Performance Metrics**: Model load time, inference time, real-time factor (RTF)
+- **Performance Metrics**: Model load time, inference time, time-to-first-audio (TTFA), real-time factor (RTF)
 - **Memory Usage**: Peak memory consumption tracking
 - **Audio Quality**: Direct playback for quality comparison
 - **Results Export**: Save audio files and metrics to JSON
@@ -327,16 +328,20 @@ python kokoro_benchmark.py
 ```
 📊 BENCHMARK COMPARISON
 ====================================================================================================
-Model                     Load(s)  Infer(s)  Total(s)  RTF    Samples/s  Memory(GB)
+Model                     Load(s)  Infer(s)  TTFA(s)  Total(s)  RTF    Samples/s  Memory(GB)
 ----------------------------------------------------------------------------------------------------
-Kokoro-82M-4bit          2.34     0.45      2.79      0.23   53333      1.85      
-Kokoro-82M-6bit          2.41     0.52      2.93      0.26   46154      2.12      
-Kokoro-82M-8bit          2.38     0.58      2.96      0.29   41379      2.45      
-Kokoro-82M-bf16          2.42     0.71      3.13      0.35   33803      3.21      
+Kokoro-82M-4bit          2.34     0.45      0.18     2.79      0.23   53333      1.85      
+Kokoro-82M-6bit          2.41     0.52      0.21     2.93      0.26   46154      2.12      
+Kokoro-82M-8bit          2.38     0.58      0.24     2.96      0.29   41379      2.45      
+Kokoro-82M-bf16          2.42     0.71      0.27     3.13      0.35   33803      3.21      
 ----------------------------------------------------------------------------------------------------
 🏆 Fastest inference: Kokoro 82M (4-bit Quantized) (0.45s)
 ⚡ Most efficient (lowest RTF): Kokoro 82M (4-bit Quantized) (0.23x)
 ```
+
+Notes:
+- The benchmark now preloads the selected voice and performs a tiny warm‑up before timing to reduce cold‑start bias.
+- Playback buffers are tuned for fast audible start; you’ll hear sentence‑by‑sentence streaming during runs.
 
 **Results are saved to `benchmark_results/` with audio files and detailed JSON metrics for further analysis.**
 

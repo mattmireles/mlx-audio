@@ -24,7 +24,7 @@ class AudioPlayer:
     """
 
     # with respect to real-time, not the sample rate
-    min_buffer_seconds = 1.5
+    min_buffer_seconds = 0.35
     measure_window = 0.25
     ema_alpha = 0.25
 
