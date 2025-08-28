@@ -422,8 +422,8 @@ struct BenchmarkView: View {
                     mem.stop()
 
                     let result = BenchmarkResult(
-                        modelName: viewModel.currentModelResource,
-                        modelDescription: viewModel.currentModelDescription,
+                        modelName: ttsModel.currentModelResource,
+                        modelDescription: ttsModel.currentModelDescription,
                         text: text,
                         voice: voice.rawValue,
                         modelLoadTime: modelLoad,

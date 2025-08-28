@@ -266,7 +266,7 @@ public class KokoroTTS {
           }
           let timeIdx = max(0, min(inputIds.count - 1, voice.shape[0] - 1))
           let channelEnd = max(0, min(1, voice.shape[1] - 1))
-          var refS = voice[timeIdx, 0 ... channelEnd, 0...]
+          let refS = voice[timeIdx, 0 ... channelEnd, 0...]
           refS.eval()
 
           let s = refS[0 ... channelEnd, 128...]
