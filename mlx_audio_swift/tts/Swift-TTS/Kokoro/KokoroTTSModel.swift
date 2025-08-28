@@ -22,6 +22,15 @@ public class KokoroTTSModel: ObservableObject {
 
     // Published property for UI updates - indicates generation OR playback is in progress
     @Published public var generationInProgress = false
+    // Track current model resource for benchmarking/labeling
+    @Published public private(set) var currentModelResource: String = "kokoro-v1_0_bf16"
+
+    public var currentModelDescription: String {
+        if currentModelResource.contains("8bit") { return "Kokoro 82M (8-bit)" }
+        if currentModelResource.contains("bf16") { return "Kokoro 82M (bfloat16)" }
+        return "Kokoro 82M"
+    }
+
 
     // A separate property to track if audio is currently playing
     @Published public var isAudioPlaying: Bool = false {
@@ -75,6 +84,9 @@ public class KokoroTTSModel: ObservableObject {
 
     public init(weightsURL: URL? = nil) {
         kokoroTTSEngine = KokoroTTS(customURL: weightsURL)
+        if let url = weightsURL {
+            currentModelResource = url.deletingPathExtension().lastPathComponent
+        }
         setupAudioSystem()
     }
 
@@ -87,6 +99,10 @@ public class KokoroTTSModel: ObservableObject {
         // Reset and swap engine
         kokoroTTSEngine.resetModel(preserveTextProcessing: false)
         kokoroTTSEngine = KokoroTTS(customURL: weightsURL)
+
+        if let url = weightsURL {
+            currentModelResource = url.deletingPathExtension().lastPathComponent
+        }
 
         // Clear timing
         audioGenerationTime = 0.0

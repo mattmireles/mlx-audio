@@ -53,7 +53,7 @@ struct ContentView: View {
                                 Text("Kokoro")
                                     .font(.title)
                             }
-                            Text("Time to first audio sample: \(viewModel.audioGenerationTime > 0 ? String(format: "%.2f", viewModel.audioGenerationTime) : "--")s")
+                            Text("\(viewModel.currentModelDescription) • TTFA: \(viewModel.audioGenerationTime > 0 ? String(format: "%.2f", viewModel.audioGenerationTime) : "--")s")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         }
@@ -422,8 +422,8 @@ struct BenchmarkView: View {
                     mem.stop()
 
                     let result = BenchmarkResult(
-                        modelName: "kokoro_v1_0_bf16",
-                        modelDescription: "Kokoro 82M (bfloat16)",
+                        modelName: viewModel.currentModelResource,
+                        modelDescription: viewModel.currentModelDescription,
                         text: text,
                         voice: voice.rawValue,
                         modelLoadTime: modelLoad,
