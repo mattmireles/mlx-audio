@@ -265,11 +265,19 @@ public class KokoroTTS {
             throw KokoroTTSError.modelNotInitialized
           }
           let timeIdx = max(0, min(inputIds.count - 1, voice.shape[0] - 1))
-          let channelEnd = max(0, min(1, voice.shape[1] - 1))
+          // Clamp channel and feature ranges defensively to avoid invalid ranges
+          let channelsMaxIndex = max(0, voice.shape[1] - 1)
+          let channelEnd = min(1, channelsMaxIndex)
+          let lastDim = max(0, voice.shape[2])
+          // Split index for decoder vs conditioning halves of style vector
+          let split = min(128, lastDim)
+          let decUpper = max(0, min(127, lastDim - 1))
+
           let refS = voice[timeIdx, 0 ... channelEnd, 0...]
           refS.eval()
 
-          let s = refS[0 ... channelEnd, 128...]
+          // Conditioning half (128..end), guarded
+          let s = refS[0 ... channelEnd, split...]
           s.eval()
 
           return try autoreleasepool { () -> MLXArray in
@@ -462,7 +470,8 @@ public class KokoroTTS {
                 _ = predAlnTrg
               }
 
-              let voiceS = refS[0 ... channelEnd, 0 ... 127]
+              // Decoder half (0..127), guarded
+              let voiceS = refS[0 ... channelEnd, 0 ... decUpper]
               voiceS.eval()
 
               autoreleasepool {
