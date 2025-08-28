@@ -216,6 +216,18 @@ class KokoroBenchmark:
             repo_id=model_name
         )
         
+        # Preload voice and do a tiny warm-up to avoid cold-start in measurements
+        try:
+            _ = pipeline.load_voice(voice)
+            # Minimal warm-up sentence to trigger model execution paths
+            warmup = pipeline("Hi.", voice=voice, speed=1.0)
+            next(warmup)
+        except StopIteration:
+            pass
+        except Exception:
+            # Warm-up is best-effort; continue benchmark even if it fails
+            pass
+        
         # Measure generation time
         print("🎵 Generating audio...")
         
