@@ -11,7 +11,7 @@ import SwiftUI
 struct Swift_TTS_iOSApp: App {
     var body: some Scene {
         WindowGroup {
-            // Lock to bf16 checkpoint for stability on device
+            // Default to bf16 checkpoint; allow switching in UI
             let weightsURL = Bundle.main.url(forResource: "kokoro-v1_0_bf16", withExtension: "safetensors")
             ContentView(viewModel: KokoroTTSModel(weightsURL: weightsURL))
         }

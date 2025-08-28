@@ -27,6 +27,8 @@ struct ContentView: View {
                 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
+                        // Model selector (bf16 vs 8-bit)
+                        modelSelectorView
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 12) {
                                 compactSpeakerView(
@@ -237,6 +239,34 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, minHeight: 44)
             .tint(.red)
             .disabled(!viewModel.isAudioPlaying)
+        }
+    }
+
+    // MARK: - Model selector
+    @State private var selectedModelIndex: Int = 0
+    private let modelOptions: [(title: String, resource: String)] = [
+        ("Kokoro 82M (bf16)", "kokoro-v1_0_bf16"),
+        ("Kokoro 82M (8-bit)", "kokoro-v1_0_8bit")
+    ]
+
+    private var modelSelectorView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Model")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Picker("Model", selection: $selectedModelIndex) {
+                ForEach(0..<modelOptions.count, id: \.self) { i in
+                    Text(modelOptions[i].title).tag(i)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: selectedModelIndex) { _, newValue in
+                let resName = modelOptions[newValue].resource
+                let url = Bundle.main.url(forResource: resName, withExtension: "safetensors")
+                viewModel.switchModel(weightsURL: url)
+                // Warm reset of MLX caches between model switches
+                MLX.GPU.clearCache()
+            }
         }
     }
 }

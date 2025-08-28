@@ -78,6 +78,20 @@ public class KokoroTTSModel: ObservableObject {
         setupAudioSystem()
     }
 
+    /// Switch the underlying model weights at runtime (e.g., bf16 vs 8-bit).
+    /// Safely resets the current model and instantiates a new engine with the provided URL.
+    public func switchModel(weightsURL: URL?) {
+        // Stop any playback/generation and reset state
+        stopPlayback()
+
+        // Reset and swap engine
+        kokoroTTSEngine.resetModel(preserveTextProcessing: false)
+        kokoroTTSEngine = KokoroTTS(customURL: weightsURL)
+
+        // Clear timing
+        audioGenerationTime = 0.0
+    }
+
     deinit {
          NotificationCenter.default.removeObserver(self)
          cleanupAudioSystem()
