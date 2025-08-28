@@ -355,7 +355,7 @@ public class KokoroTTSModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.playAudioChunk(audioBuffer)
                 }
-            }
+            })
 
             // After all sentences are processed, update the generation state
             DispatchQueue.main.async { [weak self] in
