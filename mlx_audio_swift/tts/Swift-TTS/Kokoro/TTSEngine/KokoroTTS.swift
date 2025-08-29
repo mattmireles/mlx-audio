@@ -823,7 +823,8 @@ public class KokoroTTS {
     }
 
     return try autoreleasepool { () -> MLXArray in
-      if chosenVoice != voice {
+      // Ensure voice tensor is loaded whenever missing or voice selection changed
+      if chosenVoice != voice || self.voice == nil {
         autoreleasepool {
           self.voice = VoiceLoader.loadVoice(voice)
           self.voice?.eval() // Force immediate evaluation
