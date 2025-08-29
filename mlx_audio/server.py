@@ -1,3 +1,76 @@
+# MLX-Audio FastAPI Server - Production HTTP API for Text-to-Speech Services.
+# 
+# This module provides a comprehensive HTTP API server for MLX-Audio text-to-speech
+# functionality, built on FastAPI with real-time WebRTC support for speech-to-speech
+# conversations. The server offers both REST endpoints and streaming audio capabilities.
+# 
+# Architecture:
+# - **FastAPI Framework**: High-performance async HTTP API with automatic OpenAPI documentation
+# - **WebRTC Integration**: Real-time speech-to-speech via fastrtc streaming
+# - **Multi-Model Support**: Dynamic loading of TTS models (Kokoro, CSM/Sesame, Spark)
+# - **RESTful Design**: Clean endpoint structure following HTTP best practices
+# - **CORS Enabled**: Cross-origin support for web applications and API clients
+# - **Static File Serving**: Web interface with fallback HTML for testing
+# 
+# Key responsibilities:
+# - **TTS API Endpoints**: `/tts` for text-to-speech generation with model selection
+# - **Audio File Management**: `/audio/{filename}` for retrieving generated audio files
+# - **Real-time Streaming**: WebRTC speech-to-speech pipeline with configurable voices
+# - **Model Management**: Dynamic model loading and caching for performance
+# - **Language Support**: Multi-language TTS with automatic language code mapping
+# - **Voice Cloning**: Reference audio support for voice style transfer (CSM/Sesame)
+# - **Audio Playback**: Server-side audio playback control via `/play` and `/stop` endpoints
+# 
+# Called by:
+# - **Web Applications**: Browser clients consuming REST TTS API
+# - **Mobile Apps**: iOS/Android applications requiring TTS services
+# - **CLI Tools**: Command-line applications using HTTP API for TTS
+# - **Integration Services**: Other applications requiring programmatic TTS access
+# - **Real-time Applications**: WebRTC clients for speech-to-speech conversations
+# 
+# Integrates with:
+# - **MLX-Audio Models**: All TTS implementations (`mlx_audio.tts.models.*`)
+# - **FastRTC**: Real-time communication library for WebRTC streaming
+# - **STT Models**: Whisper integration for speech recognition in speech-to-speech
+# - **Audio Processing**: `soundfile`, `numpy` for audio I/O and manipulation
+# - **MLX Framework**: Apple Silicon optimized inference via model integrations
+# 
+# REST API Endpoints:
+# - **POST /tts**: Generate TTS audio from text with model/voice selection
+# - **GET /audio/{filename}**: Retrieve generated audio files
+# - **POST /speech_to_speech_input**: Configure WebRTC speech-to-speech parameters
+# - **POST /play**: Server-side audio playback control
+# - **POST /stop**: Stop current audio playback
+# - **GET /languages**: List supported languages with display names
+# - **GET /models**: List available TTS models with capabilities
+# - **POST /open_output_folder**: Open output directory in system file manager
+# - **GET /**: Serve web interface with API documentation
+# 
+# WebRTC Features:
+# - **Real-time STT**: Speech recognition using optimized Whisper models
+# - **Real-time TTS**: Text-to-speech synthesis with configurable voices and speeds
+# - **Streaming Audio**: Low-latency audio streaming for conversation applications
+# - **Voice Selection**: Runtime voice switching for different conversation participants
+# 
+# Performance Characteristics:
+# - **Model Caching**: Global model instances to avoid reloading overhead
+# - **Async Operations**: FastAPI async/await for concurrent request handling
+# - **Memory Management**: Automatic cleanup of temporary files and model states
+# - **Error Recovery**: Robust error handling with detailed logging and fallback options
+# - **File Management**: Secure temporary file handling with automatic cleanup
+# 
+# Security Features:
+# - **CORS Configuration**: Controlled cross-origin access with configurable origins
+# - **File Path Validation**: Secure file serving with path traversal protection
+# - **Request Validation**: Pydantic models for request/response validation
+# - **Local-only Admin**: Sensitive operations restricted to localhost requests
+# 
+# Production Deployment:
+# - **Uvicorn ASGI**: Production-ready ASGI server with configurable host/port
+# - **Logging**: Structured logging with configurable verbosity levels
+# - **Health Checks**: Model loading validation and file system permissions
+# - **Static Assets**: Web interface serving with fallback error pages
+
 import argparse
 import importlib.util
 import logging
@@ -18,9 +91,76 @@ from fastrtc import ReplyOnPause, Stream, get_stt_model
 from numpy.typing import NDArray
 from pydantic import BaseModel
 
+# Server configuration constants - optimized for production deployment
+DEFAULT_HOST = "127.0.0.1"             # Default server host (localhost for security)
+DEFAULT_PORT = 8000                    # Default server port (HTTP alternative)
+DEFAULT_MODEL = "mlx-community/Kokoro-82M-4bit"  # Default TTS model for server startup
 
-# Configure logging
+# Audio processing constants - aligned with TTS model requirements
+AUDIO_SAMPLE_RATE = 24000              # Standard sample rate for high-quality TTS (Hz)
+AUDIO_CHUNK_SIZE = 2400                # Audio chunk size for streaming (0.1s at 24kHz)
+TEMP_FILE_PREFIX = "temp_ref_"          # Prefix for temporary reference audio files
+TTS_FILE_PREFIX = "tts_"               # Prefix for generated TTS audio files
+MAX_TOKEN_LIMIT = 8000                 # Maximum tokens for TTS generation
+
+# Audio channel processing constants
+AUDIO_CHANNEL_AXIS = 1                 # Axis for audio channel operations (stereo to mono)
+MONO_CHANNEL_COUNT = 1                 # Single channel count for mono audio
+
+# Speed and parameter validation constants
+MIN_SPEED_VALUE = 0.5                  # Minimum allowed speech speed
+MAX_SPEED_VALUE = 2.0                  # Maximum allowed speech speed
+DEFAULT_SPEED_VALUE = 1.0              # Default speech speed (normal)
+
+# Spark model specific constants - discrete speed/pitch mappings
+SPARK_SPEED_VERY_LOW = 0.0             # Spark model very low speed setting
+SPARK_SPEED_LOW = 0.5                  # Spark model low speed setting  
+SPARK_SPEED_MODERATE = 1.0             # Spark model moderate speed setting
+SPARK_SPEED_HIGH = 1.5                 # Spark model high speed setting
+SPARK_SPEED_VERY_HIGH = 2.0            # Spark model very high speed setting
+SPARK_PITCH_VERY_LOW = 0.0             # Spark model very low pitch setting
+SPARK_PITCH_LOW = 0.5                  # Spark model low pitch setting
+SPARK_PITCH_MODERATE = 1.0             # Spark model moderate pitch setting
+SPARK_PITCH_HIGH = 1.5                 # Spark model high pitch setting
+SPARK_PITCH_VERY_HIGH = 2.0            # Spark model very high pitch setting
+
+# File system constants
+TEST_FILE_NAME = "test_write.txt"       # Test filename for write permission validation
+TEST_FILE_CONTENT = "Test write permissions"  # Content for write permission test
+FALLBACK_DIR_NAME = "mlx_audio_outputs" # Fallback directory name for /tmp usage
+
+# Platform detection constants for file manager operations
+MACOS_PLATFORM = "darwin"               # macOS platform identifier
+WINDOWS_PLATFORM = "win32"              # Windows platform identifier  
+LINUX_PLATFORM = "linux"                # Linux platform identifier
+
+# Text processing constants
+TEXT_PREVIEW_LENGTH = 50               # Character limit for text preview in logs
+TEXT_PREVIEW_SUFFIX = "..."             # Suffix for truncated text in logs
+
+
 def setup_logging(verbose: bool = False):
+    # Configures structured logging for the MLX-Audio server.
+    # 
+    # Sets up comprehensive logging with configurable verbosity levels for
+    # production deployment monitoring and debugging. Provides detailed context
+    # in verbose mode including function names and line numbers.
+    # 
+    # Called by:
+    # - `main()` during server initialization with command-line verbose flag
+    # - Module initialization for default logger setup
+    # 
+    # Logging Levels:
+    # - **Normal Mode**: INFO level with timestamp, module, level, and message
+    # - **Verbose Mode**: DEBUG level with function names and line numbers
+    # 
+    # Args:
+    #     verbose (bool): Whether to enable debug-level logging with detailed context
+    # 
+    # Returns:
+    #     logging.Logger: Configured logger instance for server operations
+    # 
+    # Performance: Minimal overhead in normal mode, detailed context in debug mode.
     level = logging.DEBUG if verbose else logging.INFO
     format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     if verbose:
@@ -78,12 +218,12 @@ def speech_to_speech_handler(
         lang_code=language,
         verbose=False,
     ):
-        yield (24_000, np.array(segment.audio, copy=False))
-        yield (24_000, np.zeros(2_400, dtype=np.float32))
+        yield (AUDIO_SAMPLE_RATE, np.array(segment.audio, copy=False))
+        yield (AUDIO_SAMPLE_RATE, np.zeros(AUDIO_CHUNK_SIZE, dtype=np.float32))
 
 
 stream = Stream(
-    ReplyOnPause(speech_to_speech_handler, output_sample_rate=24_000),
+    ReplyOnPause(speech_to_speech_handler, output_sample_rate=AUDIO_SAMPLE_RATE),
     mode="send-receive",
     modality="audio",
 )
@@ -109,7 +249,7 @@ def tts_endpoint(
     text: str = Form(...),
     voice: str = Form(None),
     speed: str = Form("1.0"),
-    model: str = Form("mlx-community/Kokoro-82M-4bit"),
+    model: str = Form(DEFAULT_MODEL),
     language: str = Form("a"),
     pitch: str = Form(None),
     gender: str = Form(None),
@@ -127,31 +267,33 @@ def tts_endpoint(
 
     # Handle speed parameter based on model type
     if "spark" in model.lower():
-        # Spark actually expects float values that map to speed descriptions
+        # Spark model uses discrete speed mappings rather than continuous float values
         speed_map = {
-            "very_low": 0.0,
-            "low": 0.5,
-            "moderate": 1.0,
-            "high": 1.5,
-            "very_high": 2.0,
+            "very_low": SPARK_SPEED_VERY_LOW,
+            "low": SPARK_SPEED_LOW,
+            "moderate": SPARK_SPEED_MODERATE,
+            "high": SPARK_SPEED_HIGH,
+            "very_high": SPARK_SPEED_VERY_HIGH,
         }
         if speed in speed_map:
             speed_value = speed_map[speed]
         else:
-            # Try to use as float, default to 1.0 (moderate) if invalid
+            # Try to use as float, default to moderate if invalid
             try:
                 speed_value = float(speed)
-                if speed_value not in [0.0, 0.5, 1.0, 1.5, 2.0]:
-                    speed_value = 1.0  # Default to moderate
+                valid_speeds = [SPARK_SPEED_VERY_LOW, SPARK_SPEED_LOW, SPARK_SPEED_MODERATE, 
+                               SPARK_SPEED_HIGH, SPARK_SPEED_VERY_HIGH]
+                if speed_value not in valid_speeds:
+                    speed_value = SPARK_SPEED_MODERATE  # Default to moderate
             except:
-                speed_value = 1.0  # Default to moderate
+                speed_value = SPARK_SPEED_MODERATE  # Default to moderate
     else:
-        # Other models use float speed values
+        # Other models use continuous float speed values within valid range
         try:
             speed_float = float(speed)
-            if speed_float < 0.5 or speed_float > 2.0:
+            if speed_float < MIN_SPEED_VALUE or speed_float > MAX_SPEED_VALUE:
                 return JSONResponse(
-                    {"error": "Speed must be between 0.5 and 2.0"}, status_code=400
+                    {"error": f"Speed must be between {MIN_SPEED_VALUE} and {MAX_SPEED_VALUE}"}, status_code=400
                 )
             speed_value = speed_float
         except ValueError:
@@ -177,14 +319,13 @@ def tts_endpoint(
                 {"error": f"Failed to load model: {str(e)}"}, status_code=500
             )
 
-    # We'll do something like the code in model.generate() from the TTS library:
-    # Generate the unique filename
+    # Generate unique filename for TTS output to prevent conflicts
     unique_id = str(uuid.uuid4())
-    filename = f"tts_{unique_id}.wav"
+    filename = f"{TTS_FILE_PREFIX}{unique_id}.wav"
     output_path = os.path.join(OUTPUT_FOLDER, filename)
 
     logger.debug(
-        f"Generating TTS for text: '{text[:50]}...' with voice: {voice}, speed: {speed_value}, model: {model}, language: {language}"
+        f"Generating TTS for text: '{text[:TEXT_PREVIEW_LENGTH]}{TEXT_PREVIEW_SUFFIX}' with voice: {voice}, speed: {speed_value}, model: {model}, language: {language}"
     )
     logger.debug(f"Output file will be: {output_path}")
 
@@ -217,8 +358,8 @@ def tts_endpoint(
     # Handle reference audio for models that support it (like CSM/Sesame)
     ref_audio_path = None
     if reference_audio:
-        # Save the uploaded audio temporarily
-        temp_audio_path = os.path.join(OUTPUT_FOLDER, f"temp_ref_{unique_id}.wav")
+        # Save the uploaded audio temporarily with secure naming
+        temp_audio_path = os.path.join(OUTPUT_FOLDER, f"{TEMP_FILE_PREFIX}{unique_id}.wav")
         with open(temp_audio_path, "wb") as f:
             f.write(reference_audio.file.read())
         ref_audio_path = temp_audio_path
@@ -228,23 +369,23 @@ def tts_endpoint(
         "text": text,
         "speed": speed_value,
         "verbose": False,
-        "max_tokens": 8000,
+        "max_tokens": MAX_TOKEN_LIMIT,
     }
 
     # Add pitch and gender for Spark models
     if "spark" in model.lower():
-        # Spark expects float values for pitch that map to descriptions
+        # Spark model uses discrete pitch mappings for voice characteristics
         pitch_map = {
-            "very_low": 0.0,
-            "low": 0.5,
-            "moderate": 1.0,
-            "high": 1.5,
-            "very_high": 2.0,
+            "very_low": SPARK_PITCH_VERY_LOW,
+            "low": SPARK_PITCH_LOW,
+            "moderate": SPARK_PITCH_MODERATE,
+            "high": SPARK_PITCH_HIGH,
+            "very_high": SPARK_PITCH_VERY_HIGH,
         }
         if pitch and pitch in pitch_map:
             gen_params["pitch"] = pitch_map[pitch]
         else:
-            gen_params["pitch"] = 1.0  # Default to moderate
+            gen_params["pitch"] = SPARK_PITCH_MODERATE  # Default to moderate
 
         # Ensure gender has a valid value
         valid_genders = ["female", "male"]
@@ -289,7 +430,7 @@ def tts_endpoint(
 
     # Write the audio as a WAV
     try:
-        sf.write(output_path, cat_audio, 24000)
+        sf.write(output_path, cat_audio, AUDIO_SAMPLE_RATE)
         logger.debug(f"Successfully wrote audio file to {output_path}")
 
         # Verify the file exists
@@ -454,9 +595,9 @@ def play_audio(filename: str = Form(...)):
         # Load the audio file
         audio_data, sample_rate = sf.read(file_path)
 
-        # If audio is stereo, convert to mono
-        if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
-            audio_data = audio_data.mean(axis=1)
+        # If audio is stereo, convert to mono by averaging channels
+        if len(audio_data.shape) > MONO_CHANNEL_COUNT and audio_data.shape[AUDIO_CHANNEL_AXIS] > MONO_CHANNEL_COUNT:
+            audio_data = audio_data.mean(axis=AUDIO_CHANNEL_AXIS)
 
         # Queue the audio for playback
         audio_player.queue_audio(audio_data)
@@ -583,13 +724,13 @@ def open_output_folder():
 
     try:
         # For macOS (Finder)
-        if sys.platform == "darwin":
+        if sys.platform == MACOS_PLATFORM:
             os.system(f"open {OUTPUT_FOLDER}")
         # For Windows (Explorer)
-        elif sys.platform == "win32":
+        elif sys.platform == WINDOWS_PLATFORM:
             os.system(f"explorer {OUTPUT_FOLDER}")
         # For Linux (various file managers)
-        elif sys.platform == "linux":
+        elif sys.platform == LINUX_PLATFORM:
             os.system(f"xdg-open {OUTPUT_FOLDER}")
         else:
             return JSONResponse(
@@ -613,15 +754,15 @@ def setup_server():
     try:
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
         # Test write permissions by creating a test file
-        test_file = os.path.join(OUTPUT_FOLDER, "test_write.txt")
+        test_file = os.path.join(OUTPUT_FOLDER, TEST_FILE_NAME)
         with open(test_file, "w") as f:
-            f.write("Test write permissions")
+            f.write(TEST_FILE_CONTENT)
         os.remove(test_file)
         logger.debug(f"Output directory {OUTPUT_FOLDER} is writable")
     except Exception as e:
         logger.error(f"Error with output directory {OUTPUT_FOLDER}: {str(e)}")
-        # Try to use a fallback directory in /tmp
-        fallback_dir = os.path.join("/tmp", "mlx_audio_outputs")
+        # Try to use a fallback directory in /tmp for temporary storage
+        fallback_dir = os.path.join("/tmp", FALLBACK_DIR_NAME)
         logger.debug(f"Trying fallback directory: {fallback_dir}")
         try:
             os.makedirs(fallback_dir, exist_ok=True)
@@ -633,9 +774,8 @@ def setup_server():
     # Load the model if not already loaded
     if tts_model is None:
         try:
-            default_model = (
-                "mlx-community/Kokoro-82M-4bit"  # Same default as in tts_endpoint
-            )
+            # Use consistent default model across server initialization and endpoints
+            default_model = DEFAULT_MODEL
             logger.debug(f"Loading TTS model from {default_model}")
             tts_model = load_model(default_model)
             logger.debug("TTS model loaded successfully")
@@ -665,20 +805,43 @@ def setup_server():
         )
 
 
-def main(host="127.0.0.1", port=8000, verbose=False):
-    """Parse command line arguments for the server and start it."""
+def main(host=DEFAULT_HOST, port=DEFAULT_PORT, verbose=False):
+    # Initializes and starts the MLX-Audio FastAPI server with configuration.
+    # 
+    # Parses command-line arguments, configures logging, initializes the server
+    # components, and starts the uvicorn ASGI server with the specified configuration.
+    # 
+    # Called by:
+    # - Command-line execution when running server as main module
+    # - External applications requiring programmatic server startup
+    # - Development and production deployment scripts
+    # 
+    # Server Initialization Process:
+    # 1. **Argument Parsing**: Host, port, and verbose logging configuration
+    # 2. **Logger Setup**: Configures structured logging with appropriate verbosity
+    # 3. **Model Loading**: Initializes default TTS model and audio player
+    # 4. **Directory Setup**: Creates output directories with permission validation
+    # 5. **Static Assets**: Mounts static file serving for web interface
+    # 6. **ASGI Server**: Starts uvicorn server with FastAPI application
+    # 
+    # Args:
+    #     host (str): Server host address (default: localhost for security)
+    #     port (int): Server port number (default: 8000)
+    #     verbose (bool): Whether to enable debug-level logging
+    # 
+    # Performance: Async server capable of handling concurrent requests efficiently.
     parser = argparse.ArgumentParser(description="Start the MLX-Audio TTS server")
     parser.add_argument(
         "--host",
         type=str,
-        default="127.0.0.1",
-        help="Host address to bind the server to (default: 127.0.0.1)",
+        default=DEFAULT_HOST,
+        help=f"Host address to bind the server to (default: {DEFAULT_HOST})",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Port to bind the server to (default: 8000)",
+        default=DEFAULT_PORT,
+        help=f"Port to bind the server to (default: {DEFAULT_PORT})",
     )
     parser.add_argument(
         "--verbose",
