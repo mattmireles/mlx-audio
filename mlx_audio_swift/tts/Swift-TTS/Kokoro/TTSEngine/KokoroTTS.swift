@@ -493,7 +493,7 @@ public class KokoroTTS {
               predAlnTrg.eval()
               let en = d.transposed(0, 2, 1).matmul(predAlnTrg)
               en.eval()
-              let tEn = textEncoder(paddedInputIds, inputLengths: inputLengths, m: textMask)
+          let tEn = textEncoder(paddedInputIds, inputLengths: inputLengths, m: textMask)
               tEn.eval()
               let asr = MLX.matmul(tEn, predAlnTrg)
               asr.eval()
@@ -844,7 +844,13 @@ public class KokoroTTS {
         // Continue with normal audio generation
         return try self.processTokensToAudio(inputIds: inputIds, speed: speed)
       } catch {
-        // Return a short error tone instead of crashing
+        // Return a short error tone instead of crashing; also log diagnostics in debug mode
+        let debugEnabled = UserDefaults.standard.bool(forKey: "com.talktome.mlx.debug")
+        if debugEnabled {
+          let voiceName = voice.rawValue
+          let maybeShape = (self.voice != nil) ? " voiceTensorShape=\(self.voice!.shape)" : ""
+          print("Kokoro: generateAudioForSentence failed; returning error tone. textLen=\(text.count) voice=\(voiceName) speed=\(speed). Error=\(error).\(maybeShape)")
+        }
         var errorAudioData = [Float](repeating: 0.0, count: 4800) // 0.2s at 24kHz
 
         // Simple error beep

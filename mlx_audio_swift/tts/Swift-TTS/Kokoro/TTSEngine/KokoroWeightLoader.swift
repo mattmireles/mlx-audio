@@ -233,6 +233,11 @@ class KokoroWeightLoader {
                 for k in keysToReport {
                     print("  - \(k): \(shapeString(k))")
                 }
+                // Derive dModel for reporting clarity
+                if let be = sanitizedWeights["bert_encoder.weight"] {
+                  let dModel = (be.shape.count == 2) ? be.shape[0] : -1
+                  print("Kokoro: Derived dModel from bert_encoder.weight = \(dModel)")
+                }
                 // Print a sample of all available parameter keys and shapes (first 40)
                 let allKeys = sanitizedWeights.keys.sorted()
                 let sampleCount = min(40, allKeys.count)
