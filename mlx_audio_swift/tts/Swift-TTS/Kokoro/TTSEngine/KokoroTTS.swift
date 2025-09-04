@@ -756,13 +756,17 @@ public class KokoroTTS {
     }
   }
 
+  /// Generates audio for the given text and streams chunks via callback.
+  ///
+  /// Returns an optional array of `(word, startTime, endTime)` for the entire text when available.
+  /// For streaming mode, this returns `nil` and the caller is expected to construct timestamps if needed.
   public func generateAudio(
     voice: TTSVoice,
     text: String,
     speed: Float = 1.0,
     completion: (() -> Void)? = nil,
     chunkCallback: @escaping AudioChunkCallback
-  ) throws {
+  ) throws -> [(String, Double, Double)]? {
     try ensureModelInitialized()
 
     let sentences = SentenceTokenizer.splitIntoSentences(text: text)
@@ -813,6 +817,55 @@ public class KokoroTTS {
         DispatchQueue.main.async { completion() }
       }
     }
+    // Streaming path does not compute timestamps; return nil
+    return nil
+  }
+
+  /// Non-streaming convenience to generate a single buffer and word-level timestamps.
+  ///
+  /// - Returns: Tuple of (samples, timestamps) where samples is an MLXArray and timestamps is an array of (word, start, end).
+  public func generateAudioWithTimestamps(
+    voice: TTSVoice,
+    text: String,
+    speed: Float = 1.0
+  ) throws -> (MLXArray, [(String, Double, Double)]) {
+    try ensureModelInitialized()
+
+    // Prepare tokenizer and language
+    try kokoroTokenizer.setLanguage(for: voice)
+    let detailed = try kokoroTokenizer.phonemizeDetailed(text)
+    let inputIds = Tokenizer.tokenize(phonemizedText: detailed.phonemes)
+    guard inputIds.count <= Constants.maxTokenCount else { throw KokoroTTSError.tooManyTokens }
+
+    // Generate audio and alignment using the existing token pipeline
+    let audio = try processTokensToAudio(inputIds: inputIds, speed: speed)
+    audio.eval()
+
+    // Approximate mapping from phoneme indices to time using alignment heuristic
+    // NOTE: This is a placeholder for Phase 2 scaffolding. Real implementation should
+    // derive per-phoneme durations from the duration model and accumulate to word timings.
+    let totalSamples: Int = {
+      let shape = audio.shape
+      if shape.count == 1 { return shape[0] }
+      if shape.count == 2 { return shape[1] }
+      return 0
+    }()
+    let sampleRate = Double(Constants.sampleRate)
+    let totalDurationSec = Double(totalSamples) / sampleRate
+
+    var timestamps: [(String, Double, Double)] = []
+    if totalDurationSec > 0 && !detailed.wordRanges.isEmpty {
+      let totalPhonemeChars = max(1, detailed.phonemes.count)
+      for entry in detailed.wordRanges {
+        let startRatio = Double(entry.range.lowerBound) / Double(totalPhonemeChars)
+        let endRatio = Double(entry.range.upperBound) / Double(totalPhonemeChars)
+        let startTime = max(0.0, min(totalDurationSec, totalDurationSec * startRatio))
+        let endTime = max(startTime, min(totalDurationSec, totalDurationSec * endRatio))
+        timestamps.append((entry.word, startTime, endTime))
+      }
+    }
+
+    return (audio, timestamps)
   }
 
   private func generateAudioForSentence(voice: TTSVoice, text: String, speed: Float) throws -> MLXArray {

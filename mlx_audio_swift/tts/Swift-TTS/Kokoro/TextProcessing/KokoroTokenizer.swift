@@ -156,6 +156,21 @@ final class KokoroTokenizer {
         return PhonemizerResult(phonemes: result, tokens: tokenizedTokens)
     }
 
+    /// Detailed phonemization that also returns word-level character ranges within the resolved phoneme string.
+    ///
+    /// This mirrors `resolveTokens(_:)` but additionally computes the character span in the
+    /// final `phonemes` string for each non-punctuation word token. These ranges can be used
+    /// to map alignment durations (per-token) back to word-level timings.
+    ///
+    /// - Parameter text: Source text to phonemize
+    /// - Returns: Tuple containing the resolved phoneme string, original tokens, and per-word ranges
+    func phonemizeDetailed(_ text: String) throws -> (phonemes: String, tokens: [Token], wordRanges: [(word: String, range: Range<Int>)]) {
+        let (_, tokens, features, nonStringFeatures) = preprocess(text)
+        let tokenizedTokens = try tokenize(tokens: tokens, features: features, nonStringFeatures: nonStringFeatures)
+        let (resolved, ranges) = resolveTokensWithRanges(tokenizedTokens)
+        return (phonemes: resolved, tokens: tokenizedTokens, wordRanges: ranges)
+    }
+
     /// Load and separate lexicon files for word-to-phoneme mappings
     private func loadLexicon() {
         // Load US lexicons
@@ -696,6 +711,134 @@ final class KokoroTokenizer {
         }
 
         return result.joined()
+    }
+
+    /// Variant of `resolveTokens(_:)` that also returns per-word character ranges in the resolved string.
+    ///
+    /// The ranges cover only the characters contributed by each non-punctuation token's phonemes.
+    /// Punctuation that may be appended after a token (e.g., trailing '.') is not included in the range.
+    private func resolveTokensWithRanges(_ tokens: [Token]) -> (String, [(word: String, range: Range<Int>)]) {
+        // Apply G2P phoneme corrections
+        let phonemeCorrections: [String: String] = [
+            "eɪ": "A",
+            "ɹeɪndʒ": "ɹAnʤ",
+            "wɪðɪn": "wəðɪn"
+        ]
+
+        let wordPhonemeMap: [String: String] = [
+            "a": "ɐ",
+            "an": "ən"
+        ]
+
+        var processedTokens = tokens
+
+        // First pass: compute corrected phonemes per token
+        for (index, token) in processedTokens.enumerated() {
+            guard !token.phonemes.isEmpty else { continue }
+
+            // Word mapping overrides
+            if let mapped = wordPhonemeMap[token.text.lowercased()] {
+                processedTokens[index] = Token(
+                    text: token.text,
+                    whitespace: token.whitespace,
+                    phonemes: mapped,
+                    stress: token.stress,
+                    currency: token.currency,
+                    prespace: token.prespace,
+                    alias: token.alias,
+                    isHead: token.isHead
+                )
+                continue
+            }
+
+            // Phoneme corrections
+            var correctedPhonemes = token.phonemes
+            for (old, new) in phonemeCorrections {
+                correctedPhonemes = correctedPhonemes.replacingOccurrences(of: old, with: new)
+            }
+
+            // Stress application
+            if let customStress = token.stress {
+                correctedPhonemes = applyCustomStress(to: correctedPhonemes, stressValue: customStress)
+            } else {
+                let hasStress = correctedPhonemes.contains(Self.primaryStress) || correctedPhonemes.contains(Self.secondaryStress)
+                if !hasStress {
+                    if correctedPhonemes.contains(" ") {
+                        let subwords = correctedPhonemes.components(separatedBy: " ")
+                        let stressedSubwords = subwords.map { subword -> String in
+                            guard !subword.isEmpty && !subword.contains(Self.primaryStress) && !subword.contains(Self.secondaryStress) else {
+                                return subword
+                            }
+                            let hasVowels = subword.contains { Self.vowels.contains($0) }
+                            guard hasVowels else { return subword }
+                            if ["ænd", "ðə", "ɪn", "ɔn", "æt", "wɪð", "baɪ"].contains(subword) {
+                                return subword
+                            } else {
+                                return addStressBeforeVowel(subword, stress: Self.primaryStress)
+                            }
+                        }
+                        correctedPhonemes = stressedSubwords.joined(separator: " ")
+                    } else {
+                        if index == 0 {
+                            correctedPhonemes = addStressBeforeVowel(correctedPhonemes, stress: Self.secondaryStress)
+                        } else if isContentWord(token.text) && correctedPhonemes.count > 2 {
+                            correctedPhonemes = addStressBeforeVowel(correctedPhonemes, stress: Self.primaryStress)
+                        }
+                    }
+                }
+            }
+
+            processedTokens[index] = Token(
+                text: token.text,
+                whitespace: token.whitespace,
+                phonemes: correctedPhonemes,
+                stress: token.stress,
+                currency: token.currency,
+                prespace: token.prespace,
+                alias: token.alias,
+                isHead: token.isHead
+            )
+        }
+
+        // Second pass: build resolved string and accumulate ranges
+        var resolved: [String] = []
+        var punctuationAdded = false
+        var currentIndex = 0
+        var ranges: [(word: String, range: Range<Int>)] = []
+
+        for (index, token) in processedTokens.enumerated() {
+            let isPunct = Self.puncts.contains(token.text)
+
+            if index > 0 && !isPunct && !punctuationAdded {
+                resolved.append(" ")
+                currentIndex += 1
+            }
+
+            punctuationAdded = false
+
+            if isPunct {
+                resolved.append(token.text)
+                currentIndex += token.text.count
+                punctuationAdded = true
+            } else if !token.phonemes.isEmpty {
+                // Record range for this word's phoneme contribution
+                let start = currentIndex
+                resolved.append(token.phonemes)
+                currentIndex += token.phonemes.count
+                let end = currentIndex
+                ranges.append((word: token.text, range: start..<end))
+
+                // If original token text ended with punctuation, append it as separate char(s)
+                if let lastChar = token.text.last, Self.puncts.contains(String(lastChar)) {
+                    let punct = String(lastChar)
+                    resolved.append(punct)
+                    currentIndex += punct.count
+                    punctuationAdded = true
+                }
+            }
+        }
+
+        return (resolved.joined(), ranges)
     }
 
     private func addStressBeforeVowel(_ phoneme: String, stress: Character) -> String {
