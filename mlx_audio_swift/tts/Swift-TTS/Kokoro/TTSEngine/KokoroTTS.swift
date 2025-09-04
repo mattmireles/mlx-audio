@@ -928,6 +928,244 @@ public class KokoroTTS {
     )
   }
 
+  /// Generates audio and returns the per-token predicted durations `predDur` (including padding tokens).
+  ///
+  /// This is a non-streaming, single-pass pipeline that mirrors `generateAudioForTokens` but also
+  /// exposes the `predDur` array which represents the number of alignment frames for each input token
+  /// (after padding with BOS/EOS). The sum of `predDur` corresponds to the total number of alignment
+  /// frames used to synthesize the output audio.
+  private func generateAudioAndDurationsForTokens(inputIds: [Int], speed: Float) throws -> (MLXArray, MLXArray) {
+    // Create a fresh autorelease pool for the entire process
+    return try autoreleasepool { () -> (MLXArray, MLXArray) in
+      // Start with the standard processing
+      try autoreleasepool {
+        let paddedInputIdsBase = [0] + inputIds + [0]
+        let paddedInputIds = MLXArray(paddedInputIdsBase).expandedDimensions(axes: [0])
+        paddedInputIds.eval()
+
+        let inputLengths = MLXArray(paddedInputIds.dim(-1))
+        inputLengths.eval()
+
+        let inputLengthMax: Int = MLX.max(inputLengths).item()
+        var textMask = MLXArray(0 ..< inputLengthMax)
+        textMask.eval()
+
+        textMask = textMask + 1 .> inputLengths
+        textMask.eval()
+
+        textMask = textMask.expandedDimensions(axes: [0])
+        textMask.eval()
+
+        let swiftTextMask: [Bool] = textMask.asArray(Bool.self)
+        let swiftTextMaskInt = swiftTextMask.map { !$0 ? 1 : 0 }
+        let attentionMask = MLXArray(swiftTextMaskInt).reshaped(textMask.shape)
+        attentionMask.eval()
+
+        return try autoreleasepool { () -> (MLXArray, MLXArray) in
+          // Ensure model is initialized
+          guard let bert = bert,
+                let bertEncoder = bertEncoder else {
+            throw KokoroTTSError.modelNotInitialized
+          }
+
+          let (bertDur, _) = bert(paddedInputIds, attentionMask: attentionMask)
+          bertDur.eval()
+
+          autoreleasepool {
+            _ = attentionMask
+          }
+
+          let dEn = bertEncoder(bertDur).transposed(0, 2, 1)
+          dEn.eval()
+
+          autoreleasepool {
+            _ = bertDur
+          }
+
+          guard let voice = voice else {
+            throw KokoroTTSError.modelNotInitialized
+          }
+          let timeIdx = max(0, min(inputIds.count - 1, voice.shape[0] - 1))
+          // Clamp channel and feature ranges defensively to avoid invalid ranges
+          let channelsMaxIndex = max(0, voice.shape[1] - 1)
+          let channelEnd = min(1, channelsMaxIndex)
+          let feats = max(0, voice.shape[2])
+          // Explicit last index for features; bail out to zeros if none
+          if feats == 0 {
+            // Produce zeros and continue with empty style
+            let zero = MLXArray.zeros([channelEnd + 1, 128])
+            let s = zero
+            return try autoreleasepool { () -> (MLXArray, MLXArray) in
+              // Ensure components are initialized
+              guard let durationEncoder = durationEncoder,
+                    let predictorLSTM = predictorLSTM,
+                    let durationProj = durationProj else {
+                throw KokoroTTSError.modelNotInitialized
+              }
+              let d = durationEncoder(dEn, style: s, textLengths: inputLengths, m: textMask)
+              d.eval()
+              let (x, _) = predictorLSTM(d)
+              x.eval()
+              let duration = durationProj(x)
+              duration.eval()
+              let durationSigmoid = MLX.sigmoid(duration).sum(axis: -1) / speed
+              durationSigmoid.eval()
+              let predDur = MLX.clip(durationSigmoid.round(), min: 1).asType(.int32)[0]
+              predDur.eval()
+              let predAlnTrg = MLXArray.zeros([paddedInputIds.shape[1], predDur.shape[0]])
+              predAlnTrg.eval()
+              let tEn = textEncoder(paddedInputIds, inputLengths: inputLengths, m: textMask)
+              tEn.eval()
+              let asr = MLX.matmul(tEn, predAlnTrg)
+              asr.eval()
+              let audio = decoder(asr: asr, F0Curve: MLXArray.zeros([1,1]), N: MLXArray.zeros([1,1]), s: s)[0]
+              audio.eval()
+              return (audio, predDur)
+            }
+          }
+
+          let refS = voice[timeIdx, 0 ... channelEnd, 0 ... (feats - 1)]
+          refS.eval()
+
+          // Split safely into (decoder half, conditioning half)
+          let (voiceS, s) = splitStyle(refS: refS)
+          s.eval()
+
+          return try autoreleasepool { () -> (MLXArray, MLXArray) in
+            // Ensure all components are initialized
+            guard let durationEncoder = durationEncoder,
+                  let predictorLSTM = predictorLSTM,
+                  let durationProj = durationProj,
+                  let prosodyPredictor = prosodyPredictor,
+                  let textEncoder = textEncoder,
+                  let decoder = decoder else {
+              throw KokoroTTSError.modelNotInitialized
+            }
+
+            let d = durationEncoder(dEn, style: s, textLengths: inputLengths, m: textMask)
+            d.eval()
+
+            autoreleasepool {
+              _ = dEn
+              _ = textMask
+            }
+
+            let (x, _) = predictorLSTM(d)
+            x.eval()
+
+            let duration = durationProj(x)
+            duration.eval()
+
+            autoreleasepool {
+              _ = x
+            }
+
+            let durationSigmoid = MLX.sigmoid(duration).sum(axis: -1) / speed
+            durationSigmoid.eval()
+
+            autoreleasepool {
+              _ = duration
+            }
+
+            let predDur = MLX.clip(durationSigmoid.round(), min: 1).asType(.int32)[0]
+            predDur.eval()
+
+            autoreleasepool {
+              _ = durationSigmoid
+            }
+
+            // Build alignment using predDur (COO → dense approach abbreviated for timestamps purposes)
+            let indicesShape = predDur.shape[0]
+            let inputIdsShape = paddedInputIds.shape[1]
+
+            // Create MLXArray of zeros for predAlnTrg and fill via matmul approach (reuse existing logic)
+            var allIndices: [MLXArray] = []
+            let chunkSize = 50
+            for startIdx in stride(from: 0, to: predDur.shape[0], by: chunkSize) {
+              autoreleasepool {
+                let endIdx = min(startIdx + chunkSize, predDur.shape[0])
+                let chunkIndices = predDur[startIdx..<endIdx]
+                let indices = MLX.concatenated(
+                  chunkIndices.enumerated().map { i, n in
+                    let nSize: Int = n.item()
+                    let arrayIndex = MLXArray([i + startIdx])
+                    arrayIndex.eval()
+                    let repeated = MLX.repeated(arrayIndex, count: nSize)
+                    repeated.eval()
+                    return repeated
+                  }
+                )
+                indices.eval()
+                allIndices.append(indices)
+              }
+            }
+
+            let indices = MLX.concatenated(allIndices)
+            indices.eval()
+            allIndices.removeAll()
+
+            // Build dense predAlnTrg
+            var swiftPredAlnTrg = [Float](repeating: 0.0, count: inputIdsShape * indicesShape)
+            let rowIndices: [Int] = indices.asArray(Int.self)
+            // 'indices' here already encodes rows; columns are 0..<(indicesShape)
+            for (col, row) in rowIndices.enumerated() {
+              if row < inputIdsShape && col < indicesShape {
+                swiftPredAlnTrg[row * indicesShape + col] = 1.0
+              }
+            }
+
+            let predAlnTrg = MLXArray(swiftPredAlnTrg).reshaped([inputIdsShape, indicesShape])
+            predAlnTrg.eval()
+            swiftPredAlnTrg = []
+
+            let predAlnTrgBatched = predAlnTrg.expandedDimensions(axis: 0)
+            predAlnTrgBatched.eval()
+
+            let en = d.transposed(0, 2, 1).matmul(predAlnTrgBatched)
+            en.eval()
+
+            autoreleasepool {
+              _ = d
+              _ = predAlnTrgBatched
+            }
+
+            let (F0Pred, NPred) = prosodyPredictor.F0NTrain(x: en, s: s)
+            F0Pred.eval()
+            NPred.eval()
+
+            autoreleasepool {
+              _ = en
+            }
+
+            let tEn = textEncoder(paddedInputIds, inputLengths: inputLengths, m: textMask)
+            tEn.eval()
+            let asr = MLX.matmul(tEn, predAlnTrg)
+            asr.eval()
+
+            autoreleasepool {
+              _ = tEn
+              _ = predAlnTrg
+            }
+
+            let audio = decoder(asr: asr, F0Curve: F0Pred, N: NPred, s: voiceS)[0]
+            audio.eval()
+
+            autoreleasepool {
+              _ = asr
+              _ = F0Pred
+              _ = NPred
+              _ = voiceS
+              _ = s
+              _ = refS
+            }
+
+            return (audio, predDur)
+          }
+        }
+      }
+    }
+  }
+
   struct Constants {
     static let maxTokenCount = 510
     static let sampleRate = 24000
