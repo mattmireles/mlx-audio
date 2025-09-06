@@ -21,7 +21,7 @@
 ///
 /// Called by:
 /// - `KokoroTTSModel.swift`: SwiftUI-compatible wrapper providing UI state management
-/// - `MlxTTSService.swift` (main TalkToMe app): Service layer for integration with TTS pipeline
+/// - `MlxTTSService.swift` (main Gist app): Service layer for integration with TTS pipeline
 /// - Benchmark tools: Performance measurement and model evaluation utilities
 /// - Direct API consumers: Applications requiring low-level TTS control
 ///

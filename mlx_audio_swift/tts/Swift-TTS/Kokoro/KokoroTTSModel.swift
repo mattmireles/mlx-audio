@@ -23,7 +23,7 @@
 /// - `ContentView.swift`: SwiftUI interface for user TTS interactions
 /// - `Swift_TTSApp.swift`: Application-level TTS service initialization
 /// - Benchmark tools: Direct engine access for performance measurement
-/// - `MlxTTSService.swift` (in main TalkToMe app): Service layer integration
+/// - `MlxTTSService.swift` (in main Gist app): Service layer integration
 ///
 /// Integrates with:
 /// - **KokoroTTS**: Core MLX-based synthesis engine providing neural TTS models

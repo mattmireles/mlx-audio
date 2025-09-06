@@ -36,7 +36,7 @@
 /// Integration Context:
 /// - **Development Interface**: Primary development interface for MLX TTS validation
 /// - **User Testing**: Platform for evaluating voice quality and synthesis performance
-/// - **TalkToMe Preview**: Demonstration of capabilities before main app integration
+/// - **Gist Preview**: Demonstration of capabilities before main app integration
 ///
 /// TTS Provider Support:
 /// - **Kokoro Engine**: High-quality neural synthesis via MLX framework
