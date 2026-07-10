@@ -157,7 +157,6 @@
 				"Kokoro/Resources/kokoro-v1_0_6bit.safetensors",
 				"Kokoro/Resources/kokoro-v1_0_8bit.safetensors",
 				"Kokoro/Resources/kokoro-v1_0_bf16.safetensors",
-				"Kokoro/Resources/kokoro-v1_0.safetensors",
 				Kokoro/Resources/pf_dora.json,
 				Kokoro/Resources/pm_alex.json,
 				Kokoro/Resources/pm_santa.json,
@@ -679,7 +678,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Swift-TTS/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 6ETYBAJKY8;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -708,7 +707,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Swift-TTS/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 6ETYBAJKY8;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

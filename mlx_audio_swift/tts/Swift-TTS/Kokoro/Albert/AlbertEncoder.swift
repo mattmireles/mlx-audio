@@ -26,6 +26,16 @@ class AlbertEncoder {
     _ hiddenStates: MLXArray,
     attentionMask: MLXArray? = nil
   ) -> MLXArray {
+    // DEBUG: verify dimensions align for Linear([out,in]) with input [..., in]
+    // Expect hiddenStates.shape.last == 128
+    // Expect embedding_hidden_mapping_in.weight == [768, 128] (already normalized in loader)
+    let debugEnabled = UserDefaults.standard.bool(forKey: "com.talktome.mlx.debug")
+    if debugEnabled {
+      let inLast = hiddenStates.shape.last ?? -1
+      if inLast != 128 {
+        print("Kokoro: AlbertEncoder input last-dim expected 128, got \(hiddenStates.shape)")
+      }
+    }
     var output = embeddingHiddenMappingIn(hiddenStates)
 
     for i in 0 ..< config.numHiddenLayers {

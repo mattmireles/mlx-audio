@@ -401,7 +401,7 @@ for bits, weights, config_q in [(4, weights_4bit, config_4bit),
     with open(f'{output_dir}/config.json', 'w') as f:
         json.dump(config_q, f)
     
-    mx.save_safetensors(f"{output_dir}/kokoro-v1_0.safetensors", weights, 
+    mx.save_safetensors(f"{output_dir}/kokoro-v1_0_bf16.safetensors", weights, 
                        metadata={"format": "mlx"})
 ```
 
@@ -463,7 +463,7 @@ MLX-Audio includes native Swift implementations for running TTS models directly 
 2. **Configure Model Files**
    
    **For Kokoro:**
-   - Copy `kokoro-v1_0.safetensors` to `Kokoro/Resources/`
+   - Copy `kokoro-v1_0_bf16.safetensors` to `Kokoro/Resources/`
    - Voice JSON files are already included in the repository
    
    **For Orpheus:**

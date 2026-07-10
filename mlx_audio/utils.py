@@ -38,6 +38,14 @@ SLANEY_LOG_STEP_FACTOR = 6.4     # Slaney logarithmic step factor
 SLANEY_LOG_STEP_DIVISOR = 27.0   # Slaney logarithmic step normalization
 SLANEY_NORM_FACTOR = 2.0         # Slaney normalization amplitude factor
 
+# STFT/ISTFT processing constants
+SAMPLE_INDEX_OFFSET = 1           # Index offset for signal boundary padding
+FREQUENCY_BIN_MULTIPLIER = 2      # RFFT frequency bins = (n_fft // 2) + 1
+NYQUIST_DIVISOR = 2               # Nyquist frequency = sample_rate / 2
+WINDOW_BOUNDARY_OFFSET = 1        # Window boundary offset for reconstruction
+PADDING_SIZE_DIVISOR = 2          # Center padding = n_fft // 2
+MEL_FILTER_EDGE_OFFSET = 2        # Offset for mel filter edge calculation
+
 # Common window functions for audio analysis
 
 
@@ -230,16 +238,18 @@ def stft(
         if pad_mode == "constant":
             return mx.pad(x, [(padding, padding)])
         elif pad_mode == "reflect":
-            prefix = x[1 : padding + 1][::-1]
-            suffix = x[-(padding + 1) : -1][::-1]
+            prefix = x[SAMPLE_INDEX_OFFSET : padding + SAMPLE_INDEX_OFFSET][::-1]
+            suffix = x[-(padding + SAMPLE_INDEX_OFFSET) : -SAMPLE_INDEX_OFFSET][::-1]
             return mx.concatenate([prefix, x, suffix])
         else:
             raise ValueError(f"Invalid pad_mode {pad_mode}")
 
     if center:
-        x = _pad(x, n_fft // 2, pad_mode)
+        x = _pad(x, n_fft // PADDING_SIZE_DIVISOR, pad_mode)
 
-    num_frames = 1 + (x.shape[0] - n_fft) // hop_length
+    # Calculate number of frames with proper boundary handling
+    # Formula: 1 frame minimum + additional frames from hop length spacing
+    num_frames = SAMPLE_INDEX_OFFSET + (x.shape[0] - n_fft) // hop_length
     if num_frames <= 0:
         raise ValueError(
             f"Input is too short (length={x.shape[0]}) for n_fft={n_fft} with "
@@ -283,7 +293,8 @@ def istft(
     # 
     # Performance: Uses optimized overlap-add with MLX scatter operations.
     if win_length is None:
-        win_length = (x.shape[1] - 1) * 2  # Derive from RFFT size: n_fft = 2 * (n_freq_bins - 1)
+        # Derive window length from RFFT size: n_fft = 2 * (n_freq_bins - 1)
+        win_length = (x.shape[1] - SAMPLE_INDEX_OFFSET) * FREQUENCY_BIN_MULTIPLIER
     if hop_length is None:
         hop_length = win_length // HOP_LENGTH_DIVISOR  # Match STFT default
 
@@ -291,7 +302,7 @@ def istft(
         window_fn = STR_TO_WINDOW_FN.get(window.lower())
         if window_fn is None:
             raise ValueError(f"Unknown window function: {window}")
-        w = window_fn(win_length + 1)[:-1]
+        w = window_fn(win_length + WINDOW_BOUNDARY_OFFSET)[:-WINDOW_BOUNDARY_OFFSET]
     else:
         w = window
 
@@ -299,7 +310,8 @@ def istft(
         w = mx.concatenate([w, mx.zeros((win_length - w.shape[0],))], axis=0)
 
     num_frames = x.shape[1]
-    t = (num_frames - 1) * hop_length + win_length
+    # Calculate total reconstruction length with proper frame overlap
+    t = (num_frames - SAMPLE_INDEX_OFFSET) * hop_length + win_length
 
     reconstructed = mx.zeros(t)
     window_sum = mx.zeros(t)
@@ -323,7 +335,9 @@ def istft(
     reconstructed = mx.where(window_sum != 0, reconstructed / window_sum, reconstructed)
 
     if center and length is None:
-        reconstructed = reconstructed[win_length // 2 : -win_length // 2]
+        # Remove center padding applied during forward STFT
+        padding_samples = win_length // PADDING_SIZE_DIVISOR
+        reconstructed = reconstructed[padding_samples : -padding_samples]
 
     if length is not None:
         reconstructed = reconstructed[:length]
@@ -384,6 +398,7 @@ def mel_filters(
             return HTK_MEL_SCALE_FACTOR * math.log10(1.0 + freq / HTK_FREQ_REFERENCE)
 
         # Slaney scale implementation - matches Malcolm Slaney's Auditory Toolbox
+        # Slaney scale linear region parameters
         f_min, f_sp = 0.0, SLANEY_FREQ_STEP
         mels = (freq - f_min) / f_sp
         min_log_hz = SLANEY_LOG_THRESHOLD
@@ -409,6 +424,7 @@ def mel_filters(
             return HTK_FREQ_REFERENCE * (10.0 ** (mels / HTK_MEL_SCALE_FACTOR) - 1.0)
 
         # Slaney scale inverse conversion
+        # Slaney scale linear region parameters for inverse conversion
         f_min, f_sp = 0.0, SLANEY_FREQ_STEP
         freqs = f_min + f_sp * mels
         min_log_hz = SLANEY_LOG_THRESHOLD
@@ -421,18 +437,20 @@ def mel_filters(
         )
         return freqs
 
-    f_max = f_max or sample_rate / 2
+    f_max = f_max or sample_rate / NYQUIST_DIVISOR
 
     # generate frequency points
 
-    n_freqs = n_fft // 2 + 1
-    all_freqs = mx.linspace(0, sample_rate // 2, n_freqs)
+    # Calculate frequency bins for RFFT output
+    n_freqs = n_fft // NYQUIST_DIVISOR + SAMPLE_INDEX_OFFSET
+    all_freqs = mx.linspace(0, sample_rate // NYQUIST_DIVISOR, n_freqs)
 
     # convert frequencies to mel and back to hz
 
     m_min = hz_to_mel(f_min, mel_scale)
     m_max = hz_to_mel(f_max, mel_scale)
-    m_pts = mx.linspace(m_min, m_max, n_mels + 2)
+    # Generate mel scale points with edge filters (+2 for boundary filters)
+    m_pts = mx.linspace(m_min, m_max, n_mels + MEL_FILTER_EDGE_OFFSET)
     f_pts = mel_to_hz(m_pts, mel_scale)
 
     # compute slopes for filterbank
@@ -450,7 +468,8 @@ def mel_filters(
 
     if norm == "slaney":
         # Apply Slaney normalization - area under each filter sums to 1
-        enorm = SLANEY_NORM_FACTOR / (f_pts[2 : n_mels + 2] - f_pts[:n_mels])
+        # Apply Slaney normalization using edge filter boundaries
+        enorm = SLANEY_NORM_FACTOR / (f_pts[MEL_FILTER_EDGE_OFFSET : n_mels + MEL_FILTER_EDGE_OFFSET] - f_pts[:n_mels])
         filterbank *= mx.expand_dims(enorm, 0)
 
     filterbank = filterbank.moveaxis(0, 1)
